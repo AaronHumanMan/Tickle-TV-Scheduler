@@ -64,7 +64,7 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .form label.check { flex-direction: row; align-items: center; gap: 8px; }
 .form input, .form select { font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; background: #fff; }
 
-.table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .table th, .table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .table th { background: #eef1f7; font-weight: 600; }
 
@@ -73,7 +73,7 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 
 .search-select { position: relative; }
 .search-select .search-input { width: 100%; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; background: #fff; }
-.search-list { position: absolute; z-index: 20; left: 0; right: 0; margin: 4px 0 0; padding: 4px 0; list-style: none; background: #fff; border: 1px solid #c9d3ea; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 60, 0.12); max-height: 260px; overflow-y: auto; }
+.search-list { position: absolute; z-index: 200; left: 0; min-width: 100%; width: max-content; max-width: 480px; margin: 4px 0 0; padding: 4px 0; list-style: none; background: #fff; border: 1px solid #c9d3ea; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 60, 0.12); max-height: 260px; overflow-y: auto; }
 .search-list li { padding: 8px 12px; cursor: pointer; }
 .search-list li:hover, .search-list li.selected { background: #e9f1ff; }
 .search-list li.empty { color: var(--muted); cursor: default; }
@@ -114,3 +114,7 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .table.schedule input.narrow { width: 70px; }
 .table.schedule .show-cell { min-width: 220px; }
 .save-row { margin: 16px 0; display: flex; gap: 10px; }
+
+.table.schedule td, .table.schedule th { overflow: visible; }
+.table.schedule .show-cell { position: relative; }
+.muted.small { font-size: 0.8rem; font-weight: 400; }
