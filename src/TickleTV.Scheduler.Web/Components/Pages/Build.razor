@@ -16,7 +16,8 @@
 {
     <div class="card warn">
         <h2>No schedule yet</h2>
-        <p>There's no channel schedule to build from. The schedule editor is coming next; for now the schedule lives in <code>@Config.Path</code>.</p>
+        <p>There's no channel schedule to build from. Go to <a href="schedule">Schedule</a> and add a time slot.</p>
+        <a class="button primary" href="schedule">Go to Schedule</a>
     </div>
 }
 else
@@ -36,7 +37,7 @@ else
                 </tbody>
             </table>
         }
-        <p class="muted">ErsatzTV lineup: @cfg.ResolvePath(cfg.Next.Lineup)</p>
+        <p class="muted">ErsatzTV lineup: @cfg.ResolvePath(cfg.Next.Lineup) &middot; <a href="schedule">Change the schedule</a></p>
     </div>
 
     <div class="card">

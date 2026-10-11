@@ -1,0 +1,190 @@
+@page "/schedule"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@inject CatalogAccess Catalog
+@rendermode InteractiveServer
+
+<PageTitle>Schedule</PageTitle>
+
+<h1>My daily schedule</h1>
+<p class="lead">This is the grid your channel follows every day. Each row is a time slot: from that time until the next slot starts, the channel plays episodes of that show back to back. Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
+
+@if (cfg is null)
+{
+    <div class="card warn"><p>@notice</p></div>
+}
+else
+{
+    @foreach (var ch in cfg.Channels)
+    {
+        <div class="card">
+            <h2>Channel @ch.Number: @ch.Name</h2>
+
+            @if (ch.Schedule.Count == 0)
+            {
+                <p>No slots yet. Add one below.</p>
+            }
+            else
+            {
+                <table class="table schedule">
+                    <thead><tr><th>Starts at</th><th>Show</th><th>Episode order</th><th>Each show ends on</th><th>Breaks per show</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var slot in ch.Schedule.OrderBy(s => s.Time))
+                    {
+                        <tr>
+                            <td><input type="time" value="@slot.Time" @onchange="e => slot.Time = e.Value?.ToString() ?? slot.Time" /></td>
+                            <td class="show-cell"><SearchSelect Options="shows" Value="@slot.Show" ValueChanged="@(v => slot.Show = v)" Placeholder="Pick a show" AddLabel="Use the name I typed" /></td>
+                            <td>
+                                <select @bind="slot.Order">
+                                    <option value="chronological">In order (by air date)</option>
+                                    <option value="shuffle">Shuffled, no repeats</option>
+                                </select>
+                            </td>
+                            <td>
+                                <select value="@(slot.Pad ?? "")" @onchange="e => slot.Pad = NullIfEmpty(e.Value)">
+                                    <option value="">Channel default (@PadWords(ch.Defaults.Pad))</option>
+                                    <option value="30">The half hour</option>
+                                    <option value="60">The hour</option>
+                                    <option value="10">The next 10 minutes</option>
+                                    <option value="5">The next 5 minutes</option>
+                                    <option value="none">When the show ends</option>
+                                </select>
+                            </td>
+                            <td><input type="number" min="0" max="8" class="narrow" value="@slot.MaxBreaks" placeholder="@ch.Defaults.MaxBreaks" @onchange="e => slot.MaxBreaks = int.TryParse(e.Value?.ToString(), out int n) ? n : null" /></td>
+                            <td><button class="link" @onclick="() => ch.Schedule.Remove(slot)">remove</button></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            <div class="actions">
+                <button class="button" @onclick="() => AddSlot(ch)">Add a time slot</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Channel settings</h2>
+            <div class="form">
+                <label>Channel name <input @bind="ch.Name" /></label>
+                <label>Shows end on (unless a slot says otherwise)
+                    <select @bind="ch.Defaults.Pad">
+                        <option value="30">The half hour</option>
+                        <option value="60">The hour</option>
+                        <option value="10">The next 10 minutes</option>
+                        <option value="5">The next 5 minutes</option>
+                        <option value="none">When the show ends</option>
+                    </select>
+                </label>
+                <label>Commercial breaks per show (when the episode has chapter marks) <input type="number" min="0" max="8" @bind="ch.Defaults.MaxBreaks" /></label>
+                <label>Don't repeat a commercial within (minutes) <input type="number" min="0" max="1440" @bind="ch.Ads.CooldownMinutes" /></label>
+                <label>Bumpers
+                    <select @bind="ch.Bumpers.Placement">
+                        <option value="show_edges">One before the show and one after it</option>
+                        <option value="every_break">Around the commercials in every break</option>
+                    </select>
+                </label>
+                <label>Start every slot on time
+                    <select @bind="holdGrid">
+                        <option value="true">Yes: fill short leftovers with promos and commercials</option>
+                        <option value="false">No: let shows run over and start the next slot late</option>
+                    </select>
+                </label>
+                <label>Longest leftover to fill that way (minutes) <input type="number" min="1" max="60" @bind="ch.Gap.MaxMinutes" /></label>
+            </div>
+        </div>
+    }
+
+    <div class="actions save-row">
+        <button class="button primary" @onclick="Save">Save schedule</button>
+        <a class="button secondary" href="build">Go to Build</a>
+    </div>
+    @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+    @if (problems.Count > 0)
+    {
+        <div class="card warn"><ul>@foreach (string p in problems) { <li>@p</li> }</ul></div>
+    }
+}
+
+@code {
+    private SchedulerConfig? cfg;
+    private IReadOnlyList<string> shows = [];
+    private string? notice;
+    private List<string> problems = [];
+    private string holdGrid = "true";
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            cfg = Config.LoadLoose();
+            if (cfg.Channels.Count == 0)
+            {
+                cfg.Channels.Add(new ChannelConfig { Number = "1", Name = "Tickle TV", TvgId = "tickle.1" });
+            }
+            holdGrid = cfg.Channels[0].Gap.HoldGrid ? "true" : "false";
+        }
+        catch (Exception ex)
+        {
+            notice = "I couldn't read the settings file: " + ex.Message;
+        }
+        if (Catalog.CatalogExists) shows = Catalog.Run(db => db.ListShows());
+    }
+
+    private void AddSlot(ChannelConfig ch)
+    {
+        string nextTime = ch.Schedule.Count == 0 ? "06:00" : NextHour(ch.Schedule.Max(s => s.StartTime));
+        ch.Schedule.Add(new SlotConfig { Time = nextTime, Show = shows.FirstOrDefault() ?? "", Order = "chronological" });
+    }
+
+    private static string NextHour(TimeOnly latest) => latest.AddHours(1).ToString("HH:mm");
+
+    private static string? NullIfEmpty(object? value)
+    {
+        string? s = value?.ToString();
+        return string.IsNullOrEmpty(s) ? null : s;
+    }
+
+    private void Save()
+    {
+        if (cfg is null) return;
+        problems = [];
+        foreach (var ch in cfg.Channels)
+        {
+            ch.Gap.HoldGrid = holdGrid == "true";
+            if (ch.Schedule.Count == 0) problems.Add($"Channel {ch.Number} needs at least one time slot.");
+            foreach (var s in ch.Schedule)
+            {
+                if (string.IsNullOrWhiteSpace(s.Show)) problems.Add($"The {s.Time} slot has no show.");
+                else if (!shows.Any(x => string.Equals(x, s.Show.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    problems.Add($"\"{s.Show}\" isn't a show in the catalog. Pick one from the list, or scan the folder that holds it.");
+                if (!TimeOnly.TryParse(s.Time, out _)) problems.Add($"\"{s.Time}\" isn't a valid time.");
+            }
+            var dupes = ch.Schedule.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+            foreach (string t in dupes) problems.Add($"Two slots start at {t}. Give them different times.");
+        }
+        if (problems.Count > 0) { notice = "Not saved yet. Fix these first:"; return; }
+
+        try
+        {
+            cfg.Validate();
+            Config.Save(cfg);
+            notice = "Saved. Go to Build to preview or put it on air.";
+        }
+        catch (Exception ex)
+        {
+            notice = "Couldn't save: " + ex.Message;
+        }
+    }
+
+    private static string PadWords(string pad) => pad.Trim().ToLowerInvariant() switch
+    {
+        "30" => "the half hour",
+        "60" => "the hour",
+        "5" => "the next 5 minutes",
+        "10" => "the next 10 minutes",
+        "none" or "0" => "when the show ends",
+        _ => pad,
+    };
+}
