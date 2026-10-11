@@ -347,7 +347,15 @@ public sealed class CatalogDb : IDisposable
                 WHERE tag LIKE 'category:%' AND substr(tag, 10) NOT IN (SELECT slug FROM categories)
             )
             ORDER BY name COLLATE NOCASE
-            """, r => new Category(r.GetString(0), r.GetString(1), r.GetInt32(2)));
+            """, r => new Category(r.GetString(0), PrettyName(r.GetString(1)), r.GetInt32(2)));
+
+    /// <summary>A derived category keeps only its slug, so show it as words: "health-beauty-personal-care" becomes "Health Beauty Personal Care".</summary>
+    private static string PrettyName(string nameOrSlug)
+    {
+        if (nameOrSlug.Contains(' ') || nameOrSlug.Any(char.IsUpper)) return nameOrSlug;
+        return string.Join(' ', nameOrSlug.Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Length == 0 ? w : char.ToUpperInvariant(w[0]) + w[1..]));
+    }
 
     // ---- entries ----
 
