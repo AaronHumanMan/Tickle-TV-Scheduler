@@ -44,8 +44,30 @@ Options: `--pad 30|60|5|10|none`, `--max-breaks N`, `--min-act SECONDS`, `--pre-
 
 Next rejects playout files newer than the schema it supports. Next 0.2.0 accepts up to 0.0.5 (the default here). The engine embedded in legacy ErsatzTV accepts 0.0.4, so pass `--schema-version 0.0.4` for it.
 
+## Catalog: scan your library
+
+The catalog is a SQLite file. Media can live in any folder layout; files are classified from their names and folder hints, and anything the scan gets wrong is fixed once by hand and stays fixed.
+
+```
+dotnet run --project src/TickleTV.Scheduler.Cli -- scan "E:\TBTV Test" --db tickletv.sqlite
+dotnet run --project src/TickleTV.Scheduler.Cli -- catalog shows --db tickletv.sqlite
+dotnet run --project src/TickleTV.Scheduler.Cli -- catalog show "The Simpsons" --db tickletv.sqlite
+dotnet run --project src/TickleTV.Scheduler.Cli -- catalog list --kind Commercial --db tickletv.sqlite
+dotnet run --project src/TickleTV.Scheduler.Cli -- catalog kind 12 Bumper --db tickletv.sqlite
+dotnet run --project src/TickleTV.Scheduler.Cli -- catalog tag 12 kids station-id --db tickletv.sqlite
+```
+
+What the scan understands:
+
+- `Show S04E04 Title.mkv`, `257 - 1990-10-15 - TNG S04 E04 - Family.mkv`, and `Show 3x07 Title.mkv` are episodes. The air date, when present, drives chronological order.
+- `S05E02 Cape Feare.mkv` inside `The Simpsons\Season 1\` takes its show name from the folder above the season folder.
+- Words like Commercial, PSA, Promo, Bumper, Ident, Filler, and Fallback in the file or folder name set the kind. A four-digit year becomes `1991` and `1990s` tags.
+- Technical suffixes such as `(480p_30fps_H264-128kbit_AAC)` are ignored.
+
+A rescan probes only new or changed files. A file that moved or was renamed keeps its tags and play history, because items are keyed by content, not path. Deleted files are marked missing rather than dropped.
+
 ## Layout
 
-- `src/TickleTV.Scheduler.Core`: playout and XMLTV models, ffprobe wrapper, break planner, padding math.
+- `src/TickleTV.Scheduler.Core`: catalog (SQLite, scanner, filename parser), playout and XMLTV models, ffprobe wrapper, break planner, padding math, break filler.
 - `src/TickleTV.Scheduler.Cli`: command-line entry point.
 - `tests/TickleTV.Scheduler.Tests`: xunit tests.

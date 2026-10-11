@@ -14,10 +14,12 @@ public sealed record MediaProbe
     public required long DurationMs { get; init; }
     public required IReadOnlyList<Chapter> Chapters { get; init; }
     public required IReadOnlyList<MediaStreamInfo> Streams { get; init; }
+    public int? Width { get; init; }
+    public int? Height { get; init; }
 }
 
 /// <summary>Runs ffprobe and extracts the fields the scheduler needs: duration, chapters, streams.</summary>
-public sealed class Ffprobe
+public sealed class Ffprobe : Catalog.IMediaProber
 {
     private readonly string _ffprobePath;
 
@@ -91,6 +93,7 @@ public sealed class Ffprobe
         }
 
         var streams = new List<MediaStreamInfo>();
+        int? width = null, height = null;
         if (root.TryGetProperty("streams", out JsonElement streamArray))
         {
             foreach (JsonElement s in streamArray.EnumerateArray())
@@ -99,6 +102,11 @@ public sealed class Ffprobe
                 string codecType = s.GetProperty("codec_type").GetString() ?? "";
                 string? codecName = s.TryGetProperty("codec_name", out JsonElement cn) ? cn.GetString() : null;
                 streams.Add(new MediaStreamInfo(index, codecType, codecName));
+                if (codecType == "video" && width is null)
+                {
+                    if (s.TryGetProperty("width", out JsonElement w)) width = w.GetInt32();
+                    if (s.TryGetProperty("height", out JsonElement h)) height = h.GetInt32();
+                }
             }
         }
 
@@ -112,6 +120,8 @@ public sealed class Ffprobe
             DurationMs = durationMs,
             Chapters = chapters.OrderBy(c => c.StartMs).ToList(),
             Streams = streams,
+            Width = width,
+            Height = height,
         };
     }
 
