@@ -230,6 +230,34 @@ public sealed class CatalogDb : IDisposable
     public IReadOnlyList<string> ListShows() =>
         Query("SELECT show FROM episodes GROUP BY show COLLATE NOCASE ORDER BY show COLLATE NOCASE", r => r.GetString(0));
 
+    /// <summary>One row per show: episode counts and the typical (average) episode length, present files only.</summary>
+    public IReadOnlyList<ShowSummary> ListShowSummaries() =>
+        Query("""
+            SELECT e.show, COUNT(*),
+                   SUM(CASE WHEN (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) > 1 THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN e.air_date IS NOT NULL THEN 1 ELSE 0 END),
+                   CAST(AVG(m.duration_ms) AS INTEGER)
+            FROM episodes e JOIN media_items m ON m.id = e.item_id
+            WHERE m.missing_utc IS NULL
+            GROUP BY e.show COLLATE NOCASE ORDER BY e.show COLLATE NOCASE
+            """, r => new ShowSummary(r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.IsDBNull(4) ? 0 : r.GetInt64(4)));
+
+    /// <summary>The average episode length of a show in milliseconds, or null when it has no episodes.</summary>
+    public long? AverageEpisodeMs(string show) =>
+        Query("""
+            SELECT CAST(AVG(m.duration_ms) AS INTEGER) FROM episodes e JOIN media_items m ON m.id = e.item_id
+            WHERE e.show = @show COLLATE NOCASE AND m.missing_utc IS NULL
+            """, r => r.IsDBNull(0) ? (long?)null : r.GetInt64(0), ("@show", show)).FirstOrDefault();
+
+    /// <summary>The show that last aired in a slot before <paramref name="before"/>, so a block's shows keep taking turns across builds.</summary>
+    public string? LastSlotShow(string channel, string slotTime, DateTimeOffset before)
+    {
+        string? context = Query(
+            "SELECT context FROM plays WHERE channel = @c AND aired_at < @b AND context LIKE @p ORDER BY aired_at DESC LIMIT 1",
+            r => r.GetString(0), ("@c", channel), ("@b", Iso(before)), ("@p", $"slot {slotTime} %")).FirstOrDefault();
+        return context is null ? null : context[(context.IndexOf(' ', 5) + 1)..];
+    }
+
     /// <summary>Episodes of a show in broadcast order: air date first, then season and episode, then path.</summary>
     public IReadOnlyList<CatalogEntry> EpisodesOf(string show)
     {

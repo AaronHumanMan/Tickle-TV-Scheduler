@@ -123,6 +123,7 @@ public static class InitCommand
 
             # Daily grid: each slot airs its show back to back until the next slot starts.
             # Show names come from 'catalog shows'. order: chronological | shuffle
+            # A slot can list several shows that take turns:  shows: [Cheers, Frasier, Wings]
             schedule:
               - time: "06:00"
                 show: The Simpsons

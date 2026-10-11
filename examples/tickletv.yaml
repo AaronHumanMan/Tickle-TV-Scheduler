@@ -61,3 +61,7 @@ channels:
       - time: "23:00"
         show: The Simpsons
         order: shuffle
+      # A block: several shows share the slot and take turns, one episode each, in this order.
+      # - time: "01:00"
+      #   shows: [Good Eats, How It's Made]
+      #   order: shuffle

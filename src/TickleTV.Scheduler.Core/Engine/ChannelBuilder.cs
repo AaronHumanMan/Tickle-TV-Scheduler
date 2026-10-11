@@ -21,8 +21,10 @@ public sealed record BuildResult
 
 /// <summary>
 /// Turns a channel's daily grid into a playout window. Each slot airs episodes of its show back to back,
-/// each padded to its boundary, until the next slot's start time. Ads come from the channel's pool with a
-/// cooldown so the same clip does not return too soon.
+/// each padded to its boundary, until the next slot's start time. A slot that lists several shows is a block:
+/// the shows take turns, one episode each, and with hold-the-grid a show whose next episode would not fit
+/// before the next slot gives its turn to one that fits. Ads come from the channel's pool with a cooldown so
+/// the same clip does not return too soon.
 /// </summary>
 public sealed class ChannelBuilder
 {
@@ -31,6 +33,8 @@ public sealed class ChannelBuilder
     private readonly ChannelConfig _channel;
     private readonly string _schemaVersion;
     private readonly Action<string>? _log;
+    /// <summary>Whose turn it is next in each block (index into the slot's show list).</summary>
+    private readonly Dictionary<SlotConfig, int> _turn = new();
 
     public ChannelBuilder(CatalogDb db, EpisodePicker picker, ChannelConfig channel, string schemaVersion, Action<string>? log = null)
     {
@@ -78,6 +82,15 @@ public sealed class ChannelBuilder
         TimeSpan cooldown = TimeSpan.FromMinutes(_channel.Ads.CooldownMinutes);
 
         List<SlotConfig> slots = _channel.Schedule.OrderBy(s => s.StartTime).ToList();
+        foreach (SlotConfig block in slots.Where(s => s.ShowList.Count > 1))
+        {
+            // Blocks carry on from wherever they left off: the show after the one that aired last.
+            string? last = _db.LastSlotShow(_channel.Number, block.Time, from);
+            int lastIndex = last is null ? -1 : IndexOfShow(block, last);
+            _turn[block] = (lastIndex + 1) % block.ShowList.Count;
+            if (BlockAdvisor.Advice(_channel, block, _db.AverageEpisodeMs) is { } advice)
+                warnings.Add($"{block.Time} block: {advice}");
+        }
         DateTimeOffset cursor = from;
         int idCounter = 0;
 
@@ -87,21 +100,28 @@ public sealed class ChannelBuilder
 
             // Hold the grid: a short stretch before the next slot that no episode fits into becomes a station break.
             long untilNextMs = (long)(nextSlotStart - cursor).TotalMilliseconds;
-            if (_channel.Gap.HoldGrid && untilNextMs > 0 && untilNextMs <= _channel.Gap.MaxMinutes * 60_000L
-                && !NextEpisodeFits(slot.Show, untilNextMs))
+            string? show = ChooseShow(slot, untilNextMs);
+            if (show is null)
             {
-                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapLibrary, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Show);
+                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapLibrary, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Label);
                 continue;
             }
 
-            CatalogEntry? episode = ReusePrior(slot.Show) ?? _picker.Next(slot.Show, _channel.Number, slot.OrderMode);
+            CatalogEntry? episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
+            // A show with no episodes hands its turn to the next show in the block.
+            for (int tries = 1; episode is null && tries < slot.ShowList.Count; tries++)
+            {
+                warnings.Add($"No episodes found for show '{show}'; skipping its turn.");
+                show = TakeTurn(slot, (IndexOfShow(slot, show) + 1) % slot.ShowList.Count);
+                episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
+            }
 
             if (episode is null)
             {
-                warnings.Add($"No episodes found for show '{slot.Show}'. Slate until {nextSlotStart:HH:mm}.");
+                warnings.Add($"No episodes found for show '{show}'. Slate until {nextSlotStart:HH:mm}.");
                 DateTimeOffset slateEnd = nextSlotStart > cursor ? nextSlotStart : cursor.AddMinutes(30);
                 items.Add(SpikeBuilder.Slate($"slate-{++idCounter}", cursor, (long)(slateEnd - cursor).TotalMilliseconds));
-                programmes.Add(new GuideProgramme { Start = cursor, Stop = slateEnd, Title = $"{slot.Show} (no episodes)" });
+                programmes.Add(new GuideProgramme { Start = cursor, Stop = slateEnd, Title = $"{slot.Label} (no episodes)" });
                 cursor = slateEnd;
                 continue;
             }
@@ -113,7 +133,7 @@ public sealed class ChannelBuilder
                 .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
                 .ToList();
             if (ads.Count < 4 && adLibrary.Count > 0)
-                warnings.Add($"{cursor:ddd HH:mm} {slot.Show}: only {ads.Count} ads available after pool filter and cooldown.");
+                warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} ads available after pool filter and cooldown.");
 
             var probe = new MediaProbe
             {
@@ -155,11 +175,11 @@ public sealed class ChannelBuilder
                 Filler = gapFiller,
             };
             SpikeResult built = SpikeBuilder.Build(request);
-            warnings.AddRange(built.Warnings.Select(w => $"{cursor:ddd HH:mm} {slot.Show}: {w}"));
+            warnings.AddRange(built.Warnings.Select(w => $"{cursor:ddd HH:mm} {show}: {w}"));
 
             DateTimeOffset slotEnd = built.Programme.Stop;
             if (slotEnd > nextSlotStart.AddMinutes(1) && nextSlotStart > cursor)
-                warnings.Add($"{cursor:ddd HH:mm} {slot.Show} runs {(slotEnd - nextSlotStart).TotalMinutes:0} min past the next slot's start.");
+                warnings.Add($"{cursor:ddd HH:mm} {show} runs {(slotEnd - nextSlotStart).TotalMinutes:0} min past the next slot's start.");
 
             foreach (PlayoutItem item in built.Playout.Items)
             {
@@ -170,12 +190,12 @@ public sealed class ChannelBuilder
                     long? clipId = (prefix == "ad" ? adLibrary : bumperLibrary).FirstOrDefault(e => e.Item.Path == local.Path)?.Item.Id;
                     if (clipId is { } id)
                     {
-                        plays.Add(new PlayRecord(id, item.Start, $"{prefix} in {slot.Show}"));
+                        plays.Add(new PlayRecord(id, item.Start, $"{prefix} in {show}"));
                         if (prefix == "ad") recentPlays[id] = item.Start;
                     }
                 }
             }
-            plays.Add(new PlayRecord(episode.Item.Id, cursor, $"slot {slot.Time} {slot.Show}"));
+            plays.Add(new PlayRecord(episode.Item.Id, cursor, $"slot {slot.Time} {show}"));
             programmes.Add(built.Programme with
             {
                 SubTitle = episode.Episode?.EpisodeTitle,
@@ -196,6 +216,41 @@ public sealed class ChannelBuilder
             Plays = plays,
             Warnings = warnings,
         };
+    }
+
+    /// <summary>
+    /// Which show plays next in the slot. A single show always plays. In a block the shows take turns; with
+    /// hold-the-grid the turn passes to the first show whose next episode fits before the next slot. Null means
+    /// nothing fits and the leftover is short enough to fill with a station break instead.
+    /// </summary>
+    private string? ChooseShow(SlotConfig slot, long untilNextMs)
+    {
+        IReadOnlyList<string> shows = slot.ShowList;
+        int start = _turn.GetValueOrDefault(slot);
+        bool holding = _channel.Gap.HoldGrid && untilNextMs > 0;
+        if (holding)
+        {
+            for (int i = 0; i < shows.Count; i++)
+            {
+                int idx = (start + i) % shows.Count;
+                if (NextEpisodeFits(shows[idx], untilNextMs)) return TakeTurn(slot, idx);
+            }
+            if (untilNextMs <= _channel.Gap.MaxMinutes * 60_000L) return null;
+        }
+        return TakeTurn(slot, start);
+    }
+
+    private string TakeTurn(SlotConfig slot, int index)
+    {
+        _turn[slot] = (index + 1) % slot.ShowList.Count;
+        return slot.ShowList[index];
+    }
+
+    private static int IndexOfShow(SlotConfig slot, string show)
+    {
+        for (int i = 0; i < slot.ShowList.Count; i++)
+            if (string.Equals(slot.ShowList[i], show, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
     }
 
     /// <summary>Would the show's next episode (without consuming it) finish before the next slot starts?</summary>

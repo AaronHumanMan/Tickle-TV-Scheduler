@@ -51,7 +51,7 @@ public sealed class SchedulerConfig
     {
         var serializer = new SerializerBuilder()
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .ConfigureDefaultValuesHandling(DefaultValuesHandling.Preserve)
+            .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
             .Build();
         string yaml = "# Tickle TV Scheduler config. Edited by the app; paths are relative to this file.\n\n" + serializer.Serialize(this);
         string tmp = path + ".tmp";
@@ -69,7 +69,9 @@ public sealed class SchedulerConfig
             if (ch.Schedule.Count == 0) throw new InvalidDataException($"Channel {ch.Number} has no schedule slots.");
             foreach (SlotConfig slot in ch.Schedule)
             {
-                if (string.IsNullOrWhiteSpace(slot.Show)) throw new InvalidDataException($"Channel {ch.Number}: every slot needs a show.");
+                slot.Normalize();
+                if (slot.ShowList.Count == 0 || slot.ShowList.Any(string.IsNullOrWhiteSpace))
+                    throw new InvalidDataException($"Channel {ch.Number}: every slot needs at least one show.");
                 _ = slot.StartTime; // throws on a bad time
                 _ = slot.OrderMode;
             }
@@ -201,14 +203,32 @@ public sealed class SlotConfig
 {
     /// <summary>Daily start time, HH:mm. The slot runs until the next slot's start.</summary>
     public string Time { get; set; } = "00:00";
-    public string Show { get; set; } = "";
-    /// <summary>chronological or shuffle.</summary>
+    /// <summary>One show (the simple form). Moved into <see cref="Shows"/> by <see cref="Normalize"/>.</summary>
+    public string? Show { get; set; }
+    /// <summary>The shows that share this block. They take turns, one episode each, in this order.</summary>
+    public List<string> Shows { get; set; } = [];
+    /// <summary>chronological or shuffle; applies to every show in the block.</summary>
     public string Order { get; set; } = "chronological";
     public string? Pad { get; set; }
     public int? MaxBreaks { get; set; }
     public int? MinActSeconds { get; set; }
     public bool? PreRoll { get; set; }
     public bool? PostRoll { get; set; }
+
+    /// <summary>Every show in the slot, whichever form the file used.</summary>
+    [YamlIgnore]
+    public IReadOnlyList<string> ShowList => Shows.Count > 0 ? Shows : string.IsNullOrWhiteSpace(Show) ? [] : [Show.Trim()];
+
+    /// <summary>"The Simpsons" or "Cheers / Frasier / Wings" for a block.</summary>
+    [YamlIgnore]
+    public string Label => string.Join(" / ", ShowList);
+
+    /// <summary>Folds the single-show form into the list so the file always has one shape.</summary>
+    public void Normalize()
+    {
+        if (Shows.Count == 0 && !string.IsNullOrWhiteSpace(Show)) Shows = [Show.Trim()];
+        Show = null;
+    }
 
     [YamlIgnore]
     public TimeOnly StartTime => TimeOnly.TryParseExact(Time.Trim(), ["H:mm", "HH:mm", "H:mm:ss"], out TimeOnly t)

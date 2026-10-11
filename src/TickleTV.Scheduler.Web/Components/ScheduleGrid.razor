@@ -50,7 +50,7 @@
 
     private sealed record Block(string Show, string Time, int Span, int Colour, string Title);
 
-    private static string Hour(int h) => h == 0 ? "12am" : h < 12 ? $"{h}am" : h == 12 ? "12pm" : $"{h - 12}pm";
+    private static string Hour(int h) => h == 0 ? "12a" : h < 12 ? $"{h}a" : h == 12 ? "12p" : $"{h - 12}p";
 
     /// <summary>Which slot owns each hour, then merge runs of the same slot into one cell.</summary>
     private static List<Block> Blocks(ChannelConfig ch)
@@ -62,7 +62,7 @@
             blocks.Add(new Block("No slots yet", "", 24, 0, ""));
             return blocks;
         }
-        var colours = slots.Select(s => s.Show).Distinct(StringComparer.OrdinalIgnoreCase).Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i % 6 + 1, StringComparer.OrdinalIgnoreCase);
+        var colours = slots.Select(s => s.Label).Distinct(StringComparer.OrdinalIgnoreCase).Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i % 6 + 1, StringComparer.OrdinalIgnoreCase);
 
         SlotConfig? current = null;
         int span = 0;
@@ -82,6 +82,8 @@
     private static Block Make(SlotConfig s, int span, Dictionary<string, int> colours)
     {
         string order = s.OrderMode == OrderMode.Shuffle ? "shuffled" : "in order";
-        return new Block(s.Show, s.StartTime.ToString("h:mm tt").ToLowerInvariant(), span, colours.GetValueOrDefault(s.Show, 1), $"{s.Show} from {s.StartTime:h:mm tt}, {order}");
+        string label = s.ShowList.Count == 0 ? "(no show)" : s.Label;
+        string kind = s.ShowList.Count > 1 ? "take turns, " : "";
+        return new Block(label, s.StartTime.ToString("h:mm tt").ToLowerInvariant(), span, colours.GetValueOrDefault(s.Label, 1), $"{label} from {s.StartTime:h:mm tt}, {kind}{order}");
     }
 }

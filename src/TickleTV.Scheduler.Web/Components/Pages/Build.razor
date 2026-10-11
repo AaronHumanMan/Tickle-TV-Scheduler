@@ -43,7 +43,7 @@ else
                     <tbody>
                     @foreach (var s in ch.Schedule.OrderBy(s => s.StartTime))
                     {
-                        <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Show</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
+                        <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Label@(s.ShowList.Count > 1 ? " (take turns)" : "")</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
                     }
                     </tbody>
                 </table>

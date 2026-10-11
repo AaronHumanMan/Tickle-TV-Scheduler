@@ -6,7 +6,7 @@
 <PageTitle>My shows</PageTitle>
 
 <h1>My shows</h1>
-<p class="lead">Every show Tickle TV found, with how many episodes it has. Episodes with chapter marks get commercial breaks between scenes; episodes without them play straight through and get commercials only at the end.</p>
+<p class="lead">Every show Tickle TV found, with how many episodes it has and how long a typical episode runs. Episodes with chapter marks get commercial breaks between scenes; episodes without them play straight through and get commercials only at the end. The typical length is what the Schedule page uses to work out how many shows fit in a block of time.</p>
 
 @if (rows.Count == 0)
 {
@@ -15,26 +15,21 @@
 else
 {
     <table class="table">
-        <thead><tr><th>Show</th><th>Episodes</th><th>With chapter marks</th><th>With air dates</th></tr></thead>
+        <thead><tr><th>Show</th><th>Episodes</th><th>Typical length</th><th>With chapter marks</th><th>With air dates</th></tr></thead>
         <tbody>
         @foreach (var r in rows)
         {
-            <tr><td>@r.Show</td><td>@r.Episodes</td><td>@r.WithChapters</td><td>@r.WithDates</td></tr>
+            <tr><td>@r.Show</td><td>@r.Episodes</td><td>@r.AvgMinutes min</td><td>@r.WithChapters</td><td>@r.WithDates</td></tr>
         }
         </tbody>
     </table>
 }
 
 @code {
-    private List<(string Show, int Episodes, int WithChapters, int WithDates)> rows = [];
+    private IReadOnlyList<ShowSummary> rows = [];
 
     protected override void OnInitialized()
     {
-        if (!Catalog.CatalogExists) return;
-        rows = Catalog.Run(db => db.ListShows().Select(show =>
-        {
-            var eps = db.EpisodesOf(show);
-            return (show, eps.Count, eps.Count(e => e.Chapters.Count > 1), eps.Count(e => e.Episode?.AirDate is not null));
-        }).ToList());
+        if (Catalog.CatalogExists) rows = Catalog.Run(db => db.ListShowSummaries());
     }
 }

@@ -58,13 +58,8 @@ public static class CatalogCommand
         cmd.SetAction(p =>
         {
             using var catalog = new CatalogDb(p.GetRequiredValue(db).FullName);
-            foreach (string show in catalog.ListShows())
-            {
-                var eps = catalog.EpisodesOf(show);
-                int withChapters = eps.Count(e => e.Chapters.Count > 1);
-                int withDates = eps.Count(e => e.Episode?.AirDate is not null);
-                Console.WriteLine($"{show}: {eps.Count} episodes, {withChapters} with chapters, {withDates} with air dates");
-            }
+            foreach (ShowSummary s in catalog.ListShowSummaries())
+                Console.WriteLine($"{s.Show}: {s.Episodes} episodes, {s.WithChapters} with chapters, {s.WithDates} with air dates, about {s.AvgMinutes} min each");
             return 0;
         });
         return cmd;

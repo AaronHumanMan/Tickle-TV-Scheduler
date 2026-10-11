@@ -65,6 +65,12 @@ public sealed record CatalogEntry
 }
 
 /// <summary>Why an item is in the review queue.</summary>
+/// <summary>A show as the Shows page and the schedule editor see it.</summary>
+public sealed record ShowSummary(string Show, int Episodes, int WithChapters, int WithDates, long AvgDurationMs)
+{
+    public int AvgMinutes => (int)((AvgDurationMs + 30_000) / 60_000);
+}
+
 public enum AttentionReason
 {
     /// <summary>The scan could not tell what kind of file this is.</summary>

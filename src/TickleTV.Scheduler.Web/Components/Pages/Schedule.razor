@@ -1,6 +1,7 @@
 @page "/schedule"
 @using TickleTV.Scheduler.Core.Catalog
 @using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Core.Engine
 @using TickleTV.Scheduler.Web.Services
 @inject ConfigStore Config
 @inject CatalogAccess Catalog
@@ -9,7 +10,7 @@
 <PageTitle>Schedule</PageTitle>
 
 <h1>My daily schedule</h1>
-<p class="lead">This is the grid your channels follow every day. Each time slot plays episodes of one show back to back until the next slot starts. Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
+<p class="lead">This is the grid your channels follow every day. Each time slot plays episodes back to back until the next slot starts. A slot can hold one show, or several that take turns (a block). Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
 
 @if (cfg is null)
 {
@@ -59,6 +60,7 @@ else
 @code {
     private SchedulerConfig? cfg;
     private IReadOnlyList<string> shows = [];
+    private Dictionary<string, long> lengths = new(StringComparer.OrdinalIgnoreCase);
     private string? notice;
     private List<string> problems = [];
     private string view = "list";
@@ -77,13 +79,25 @@ else
             <div class="table-wrap">
             <table class="table schedule">
                 <colgroup><col class="c-time" /><col class="c-show" /><col class="c-order" /><col class="c-pad" /><col class="c-breaks" /><col class="c-remove" /></colgroup>
-                <thead><tr><th>Starts at</th><th>Show</th><th>Episode order</th><th>Each show ends on</th><th>Breaks inside each episode<br /><span class="th-note">needs chapter marks; blank = channel setting</span></th><th></th></tr></thead>
+                <thead><tr><th>Starts at</th><th>Show, or shows that take turns</th><th>Episode order</th><th>Each show ends on</th><th>Breaks inside each episode<br /><span class="th-note">needs chapter marks; blank = channel setting</span></th><th></th></tr></thead>
                 <tbody>
                 @foreach (var slot in ch.Schedule.OrderBy(s => s.Time).ToList())
                 {
                     <tr>
                         <td><input type="time" value="@slot.Time" @onchange="e => slot.Time = e.Value?.ToString() ?? slot.Time" /></td>
-                        <td class="show-cell"><SearchSelect Options="shows" Value="@slot.Show" ValueChanged="@(v => slot.Show = v)" Placeholder="Pick a show" AddLabel="Use the name I typed" /></td>
+                        <td class="show-cell">
+                            @for (int i = 0; i < slot.Shows.Count; i++)
+                            {
+                                int idx = i;
+                                <div class="show-row">
+                                    <SearchSelect Options="shows" Value="@slot.Shows[idx]" ValueChanged="@(v => slot.Shows[idx] = v)" Placeholder="Pick a show" AddLabel="Use the name I typed" />
+                                    <span class="len">@LengthWords(slot.Shows[idx])</span>
+                                    @if (slot.Shows.Count > 1) { <button class="link" title="Take this show out of the block" @onclick="() => slot.Shows.RemoveAt(idx)">remove</button> }
+                                </div>
+                            }
+                            <button class="link" @onclick="() => slot.Shows.Add(string.Empty)">+ add another show to this slot</button>
+                            @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
+                        </td>
                         <td>
                             <select @bind="slot.Order">
                                 <option value="chronological">In order (by air date)</option>
@@ -149,14 +163,28 @@ else
             cfg = Config.LoadLoose();
             if (cfg.Channels.Count == 0)
                 cfg.Channels.Add(new ChannelConfig { Number = "1", Name = "Tickle TV", TvgId = "tickle.1" });
+            foreach (var slot in cfg.Channels.SelectMany(c => c.Schedule))
+            {
+                slot.Normalize();
+                if (slot.Shows.Count == 0) slot.Shows.Add(string.Empty);
+            }
             view = cfg.Ui.ScheduleView == "grid" ? "grid" : "list";
         }
         catch (Exception ex)
         {
             notice = "I couldn't read the settings file: " + ex.Message;
         }
-        if (Catalog.CatalogExists) shows = Catalog.Run(db => db.ListShows());
+        if (Catalog.CatalogExists)
+        {
+            var summaries = Catalog.Run(db => db.ListShowSummaries());
+            shows = summaries.Select(s => s.Show).ToList();
+            lengths = summaries.ToDictionary(s => s.Show, s => s.AvgDurationMs, StringComparer.OrdinalIgnoreCase);
+        }
     }
+
+    private long? AverageOf(string show) => lengths.TryGetValue(show, out long ms) ? ms : null;
+
+    private string LengthWords(string show) => AverageOf(show) is { } ms ? $"about {(ms + 30_000) / 60_000} min" : "";
 
     private void SetHoldGrid(ChannelConfig ch, ChangeEventArgs e) => holdGrid[ch.Number] = e.Value?.ToString() ?? "true";
 
@@ -178,7 +206,7 @@ else
     private void AddSlot(ChannelConfig ch)
     {
         string nextTime = ch.Schedule.Count == 0 ? "06:00" : ch.Schedule.Max(s => s.StartTime).AddHours(1).ToString("HH:mm");
-        ch.Schedule.Add(new SlotConfig { Time = nextTime, Show = shows.FirstOrDefault() ?? "", Order = "chronological" });
+        ch.Schedule.Add(new SlotConfig { Time = nextTime, Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" });
     }
 
     private static string? NullIfEmpty(object? value)
@@ -197,9 +225,15 @@ else
             if (ch.Schedule.Count == 0) problems.Add($"Channel {ch.Number} needs at least one time slot.");
             foreach (var s in ch.Schedule)
             {
-                if (string.IsNullOrWhiteSpace(s.Show)) problems.Add($"Channel {ch.Number}: the {s.Time} slot has no show.");
-                else if (!shows.Any(x => string.Equals(x, s.Show.Trim(), StringComparison.OrdinalIgnoreCase)))
-                    problems.Add($"Channel {ch.Number}: \"{s.Show}\" isn't a show in the catalog. Pick one from the list, or scan the folder that holds it.");
+                if (s.Shows.Count == 0 || s.Shows.All(string.IsNullOrWhiteSpace)) problems.Add($"Channel {ch.Number}: the {s.Time} slot has no show.");
+                foreach (string name in s.Shows)
+                {
+                    if (string.IsNullOrWhiteSpace(name)) { if (s.Shows.Count > 1) problems.Add($"Channel {ch.Number}: the {s.Time} slot has an empty show row. Pick a show or remove the row."); }
+                    else if (!shows.Any(x => string.Equals(x, name.Trim(), StringComparison.OrdinalIgnoreCase)))
+                        problems.Add($"Channel {ch.Number}: \"{name}\" isn't a show in the catalog. Pick one from the list, or scan the folder that holds it.");
+                }
+                if (s.Shows.Count(n => !string.IsNullOrWhiteSpace(n)) != s.Shows.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase).Count())
+                    problems.Add($"Channel {ch.Number}: the {s.Time} slot lists the same show twice.");
                 if (!TimeOnly.TryParse(s.Time, out _)) problems.Add($"Channel {ch.Number}: \"{s.Time}\" isn't a valid time.");
             }
             foreach (string t in ch.Schedule.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key))
@@ -209,9 +243,12 @@ else
 
         try
         {
+            foreach (var s in cfg.Channels.SelectMany(c => c.Schedule))
+                s.Shows = s.Shows.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()).ToList();
             cfg.Validate();
             Config.Save(cfg);
-            notice = "Saved. Go to Build to preview or put it on air.";
+            var notes = cfg.Channels.SelectMany(c => c.Schedule.Select(s => BlockAdvisor.Advice(c, s, AverageOf))).Where(a => a is not null).ToList();
+            notice = "Saved. Go to Build to preview or put it on air." + (notes.Count > 0 ? " One thing to know: " + string.Join(" ", notes) : "");
         }
         catch (Exception ex)
         {

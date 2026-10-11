@@ -91,6 +91,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml 
 dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 ```
 
+- A slot can list several shows: `shows: [Cheers, Frasier, Wings]`. They take turns, one episode each, in that order, and the turn carries over from day to day. With `hold_grid`, a show whose next episode would not fit before the next slot gives its turn to one that fits. The Schedule page and the build warnings say when a block is too short for all of its shows to play in one day (for example two 45-minute shows in an hour-long block): that is allowed, the shows simply alternate days. The My shows page lists each show's typical episode length, which is what that check uses.
 - `order: chronological` follows original air date (season and episode as fallback) and wraps. `order: shuffle` airs every episode once before any repeats. Position is remembered per show and channel across builds.
 - `ads.pool` is a query over the catalog: `kind = commercial AND era within 3 AND NOT tag:late-night`. `ads.cooldown_minutes` keeps a clip off air after it plays.
 - A rebuild joins the running schedule at the end of the programme on air: what's playing finishes as planned, the new schedule starts there, and earlier items are carried into the new file. It keeps the episodes the old window had already assigned, so rebuilding does not move shows forward; pass `--fresh` to pick again. `--dry-run` prints the plan and changes nothing, including rotation state.
