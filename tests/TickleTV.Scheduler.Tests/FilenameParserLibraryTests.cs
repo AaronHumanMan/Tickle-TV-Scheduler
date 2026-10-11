@@ -83,7 +83,7 @@ public class FilenameParserLibraryTests
     public void Bumper_with_the_word_bumper_and_no_schedule_words_is_tagged_bumper()
     {
         ParsedName p = FilenameParser.Parse(@"G:\Commercials\90s\Bumpers and Promos\Fox Kids Network bumper - couch, the cat, dog and aliens.mkv");
-        Assert.Contains("bumper", p.Tags);
+        Assert.Contains("break-card", p.Tags);
         Assert.DoesNotContain("promo", p.Tags);
         Assert.Contains("network:fox-kids-network-bumper", p.Tags);
     }

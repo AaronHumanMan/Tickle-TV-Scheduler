@@ -157,7 +157,7 @@ public static partial class FilenameParser
             // "we'll be right back" cards are. Pools tell them apart by tag.
             if (PromoWords().IsMatch(withoutDate)) tags.Add("promo");
             if (StationIdWords().IsMatch(withoutDate)) tags.Add("station-id");
-            if (BreakBumperWords().IsMatch(withoutDate)) tags.Add("bumper");
+            if (BreakBumperWords().IsMatch(withoutDate)) tags.Add("break-card");
             if (Network(withoutDate) is { } network) tags.Add("network:" + network);
         }
 

@@ -92,8 +92,8 @@ public sealed class LibraryActions
             }
 
             // A bumper has one role; picking one replaces the others.
-            if (c.Kind == MediaKind.Bumper && c.ExtraLabels.Trim() is "promo" or "station-id" or "bumper")
-                foreach (string role in new[] { "promo", "station-id", "bumper" }) db.RemoveTag(itemId, role);
+            if (c.Kind == MediaKind.Bumper && c.ExtraLabels.Trim() is "promo" or "station-id" or "break-card")
+                foreach (string role in new[] { "promo", "station-id", "break-card" }) db.RemoveTag(itemId, role);
 
             foreach (string label in c.ExtraLabels.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {

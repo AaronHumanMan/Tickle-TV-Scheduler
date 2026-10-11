@@ -274,7 +274,7 @@ public sealed class CatalogDb : IDisposable
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'brand:%')
                  AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = 'brand-not-needed') THEN 'NoBrand'
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%') THEN 'NoCategory'
-            WHEN m.kind = 'Bumper' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ('promo', 'station-id', 'bumper')) THEN 'BumperUnsorted'
+            WHEN m.kind = 'Bumper' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ('promo', 'station-id', 'break-card')) THEN 'BumperUnsorted'
             WHEN m.kind = 'Episode' AND (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) <= 1 THEN 'NoChapters'
         END
         """;
