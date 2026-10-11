@@ -323,6 +323,64 @@ public sealed class CatalogDb : IDisposable
         return result;
     }
 
+    // ---- browse and search ----
+
+    public sealed record SearchFilter
+    {
+        public string? Text { get; init; }
+        public MediaKind? Kind { get; init; }
+        public string? Show { get; init; }
+        public string? Category { get; init; }
+        public string? Tag { get; init; }
+        public bool IncludeMissing { get; init; }
+    }
+
+    private static (string Where, (string, object?)[] Args) SearchWhere(SearchFilter f)
+    {
+        var where = new List<string> { "1=1" };
+        var args = new List<(string, object?)>();
+        if (!f.IncludeMissing) where.Add("m.missing_utc IS NULL");
+        if (!string.IsNullOrWhiteSpace(f.Text))
+        {
+            where.Add("(m.title LIKE @text OR m.path LIKE @text OR e.episode_title LIKE @text)");
+            args.Add(("@text", "%" + f.Text.Trim() + "%"));
+        }
+        if (f.Kind is { } k) { where.Add("m.kind = @kind"); args.Add(("@kind", k.ToString())); }
+        if (!string.IsNullOrWhiteSpace(f.Show)) { where.Add("e.show = @show COLLATE NOCASE"); args.Add(("@show", f.Show.Trim())); }
+        if (!string.IsNullOrWhiteSpace(f.Category))
+        {
+            where.Add("EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = @cat)");
+            args.Add(("@cat", "category:" + NormalizeTag(f.Category)));
+        }
+        if (!string.IsNullOrWhiteSpace(f.Tag))
+        {
+            where.Add("EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = @tag)");
+            args.Add(("@tag", NormalizeTag(f.Tag)));
+        }
+        return (string.Join(" AND ", where), args.ToArray());
+    }
+
+    public int CountSearch(SearchFilter f)
+    {
+        (string where, var args) = SearchWhere(f);
+        return (int)Scalar<long>($"SELECT COUNT(*) FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id WHERE {where}", args);
+    }
+
+    public IReadOnlyList<CatalogEntry> Search(SearchFilter f, int limit = 50, int offset = 0)
+    {
+        (string where, var args) = SearchWhere(f);
+        var ids = Query($"""
+            SELECT m.id FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
+            WHERE {where}
+            ORDER BY e.show COLLATE NOCASE, e.season, e.episode, m.title COLLATE NOCASE, m.path
+            LIMIT @limit OFFSET @offset
+            """, r => r.GetInt64(0), [.. args, ("@limit", limit), ("@offset", offset)]);
+        return ids.Select(id => GetEntry(id)!).ToList();
+    }
+
+    public IReadOnlyList<string> ListAllTags() =>
+        Query("SELECT DISTINCT tag FROM tags WHERE tag NOT LIKE 'category:%' AND tag NOT LIKE 'brand:%' AND tag NOT LIKE 'show:%' AND tag NOT LIKE 'network:%' ORDER BY tag", r => r.GetString(0));
+
     // ---- categories ----
 
     /// <summary>A commercial category a person can pick from. Slugs match the category:... tags.</summary>

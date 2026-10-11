@@ -1,0 +1,100 @@
+@page "/library"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+@rendermode InteractiveServer
+
+<PageTitle>Library</PageTitle>
+
+<h1>Library</h1>
+<p class="lead">Everything Tickle TV has scanned. Search by name, narrow by kind, show, or category, then watch, open, or edit any file. Tick several to label them together.</p>
+
+<div class="card search-card">
+    <div class="form">
+        <label>Search by name
+            <input @bind="text" @bind:event="oninput" @onkeydown="OnKey" placeholder="e.g. Taco Bell, Homer, Jeep" />
+        </label>
+        <label>Kind
+            <select @bind="kind">
+                <option value="">Any</option>
+                @foreach (MediaKind k in Enum.GetValues<MediaKind>())
+                {
+                    <option value="@k">@LibraryActions.Describe(k)</option>
+                }
+            </select>
+        </label>
+        <label>Show
+            <SearchSelect Options="shows" Value="@show" ValueChanged="@(v => show = v)" Placeholder="Any show" AddLabel="Any show" />
+        </label>
+        <label>Category
+            <SearchSelect Options="categories" Value="@category" ValueChanged="@(v => category = v)" Placeholder="Any category" AddLabel="Any category" />
+        </label>
+        <label>Label
+            <SearchSelect Options="tags" Value="@tag" ValueChanged="@(v => tag = v)" Placeholder="Any label" AddLabel="Any label" />
+        </label>
+        <div class="actions">
+            <button class="button primary" @onclick="Search">Search</button>
+            <button class="button secondary" @onclick="Clear">Clear</button>
+        </div>
+    </div>
+</div>
+
+<p class="muted">@total matching file@(total == 1 ? "" : "s")@(total > PageSize ? $", showing {page * PageSize + 1} to {Math.Min(total, (page + 1) * PageSize)}" : "")</p>
+
+<ItemList Items="entries" EmptyTitle="No matches" EmptyText="Try fewer filters or a different word." OnChanged="Reload" />
+
+@if (total > PageSize)
+{
+    <div class="pager">
+        <button class="button secondary" disabled="@(page == 0)" @onclick="() => Go(page - 1)">Previous</button>
+        <span class="muted">Page @(page + 1) of @Math.Max(1, (total + PageSize - 1) / PageSize)</span>
+        <button class="button secondary" disabled="@((page + 1) * PageSize >= total)" @onclick="() => Go(page + 1)">Next</button>
+    </div>
+}
+
+@code {
+    private const int PageSize = 50;
+    private string text = "";
+    private string kind = "";
+    private string show = "";
+    private string category = "";
+    private string tag = "";
+    private int page;
+    private int total;
+    private List<CatalogEntry> entries = [];
+    private IReadOnlyList<string> shows = [];
+    private IReadOnlyList<string> categories = [];
+    private IReadOnlyList<string> tags = [];
+
+    protected override void OnInitialized()
+    {
+        if (!Catalog.CatalogExists) return;
+        shows = Catalog.Run(db => db.ListShows());
+        categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
+        tags = Catalog.Run(db => db.ListAllTags());
+        Reload();
+    }
+
+    private CatalogDb.SearchFilter Filter() => new()
+    {
+        Text = text,
+        Kind = Enum.TryParse(kind, out MediaKind k) ? k : null,
+        Show = show,
+        Category = category,
+        Tag = tag,
+    };
+
+    private void Reload()
+    {
+        if (!Catalog.CatalogExists) return;
+        var f = Filter();
+        total = Catalog.Run(db => db.CountSearch(f));
+        if (page * PageSize >= total) page = 0;
+        entries = Catalog.Run(db => db.Search(f, PageSize, page * PageSize)).ToList();
+    }
+
+    private void Search() { page = 0; Reload(); }
+    private void Clear() { text = ""; kind = ""; show = ""; category = ""; tag = ""; page = 0; Reload(); }
+    private void Go(int p) { page = Math.Max(0, p); Reload(); }
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") Search(); }
+}

@@ -1,0 +1,259 @@
+@* A list of catalog items with Watch, Show in folder, a per-item label form, and bulk editing. Shared by Needs attention and Library. *@
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+@inject FileOpener Opener
+@inject LibraryActions Actions
+
+@if (!string.IsNullOrEmpty(notice))
+{
+    <div class="notice">@notice</div>
+}
+
+@if (Items.Count > 0)
+{
+    <div class="select-bar">
+        <button class="button secondary" @onclick="SelectAll">Select all @Items.Count shown</button>
+        @if (selected.Count > 0)
+        {
+            <button class="button secondary" @onclick="ClearSelection">Clear selection</button>
+            <span class="muted">@selected.Count selected</span>
+        }
+    </div>
+}
+
+@if (selected.Count > 0)
+{
+    <div class="card bulk">
+        <h2>Label @selected.Count files at once</h2>
+        <p class="muted">Whatever you fill in here is applied to every ticked file. Anything you leave blank keeps each file's current value.</p>
+        <div class="form">
+            <label>What are they?
+                <select @bind="bulk.Kind">
+                    <option value="@MediaKind.Unknown">Leave as is</option>
+                    <option value="@MediaKind.Commercial">Commercials</option>
+                    <option value="@MediaKind.Episode">TV episodes</option>
+                    <option value="@MediaKind.Movie">Movies</option>
+                    <option value="@MediaKind.Bumper">Bumpers (station IDs, break cards)</option>
+                    <option value="@MediaKind.Filler">Filler</option>
+                    <option value="@MediaKind.Other">Not something to air</option>
+                </select>
+            </label>
+
+            @if (bulk.Kind == MediaKind.Episode)
+            {
+                <label>Which show?
+                    <SearchSelect Options="shows" Value="@bulk.Show" ValueChanged="@(v => bulk.Show = v)" Placeholder="Type to search shows" AddLabel="＋ New show…" AddPlaceholder="Show name" />
+                </label>
+                <label>Season <input type="number" min="0" @bind="bulk.Season" placeholder="keep" /></label>
+                <label>Number them in order, starting at <input type="number" min="0" @bind="bulkNumberFrom" placeholder="leave blank to keep" /></label>
+            }
+
+            @if (bulk.Kind == MediaKind.Commercial)
+            {
+                <label>Brand <input @bind="bulk.Brand" placeholder="leave blank to keep" disabled="@bulk.BrandNotNeeded" /></label>
+                <label class="check"><input type="checkbox" @bind="bulk.BrandNotNeeded" /> There is no brand to name</label>
+                <label>Category
+                    <SearchSelect Options="categories" Value="@bulk.Category" ValueChanged="@(v => bulk.Category = v)" Placeholder="Type to search" AddLabel="＋ Add a category…" AddPlaceholder="New category name" OnAdd="AddCategory" />
+                </label>
+            }
+
+            @if (bulk.Kind == MediaKind.Bumper)
+            {
+                <label>What kind of bumper?
+                    <select @bind="bulk.ExtraLabels">
+                        <option value="">Leave as is</option>
+                        <option value="station-id">Station ID (a network or channel logo)</option>
+                        <option value="break-card">Break card ("we'll be right back", "stay tuned")</option>
+                        <option value="promo">Promo for a show or movie</option>
+                    </select>
+                </label>
+            }
+            else
+            {
+                <label>Other labels (optional, separate with commas) <input @bind="bulk.ExtraLabels" placeholder="e.g. kids, christmas" /></label>
+            }
+
+            <button class="button primary" @onclick="ApplyBulk">Apply to @selected.Count files</button>
+        </div>
+    </div>
+}
+
+@if (Items.Count == 0)
+{
+    <div class="card ok"><h2>@EmptyTitle</h2><p>@EmptyText</p></div>
+}
+
+@foreach (var e in Items)
+{
+    var choice = Choice(e.Item.Id);
+    bool isSelected = selected.Contains(e.Item.Id);
+    string? note = NoteFor?.Invoke(e.Item.Id);
+    <div class="card item @(isSelected ? "picked" : "")">
+        <div class="item-head">
+            <label class="pick"><input type="checkbox" checked="@isSelected" @onchange="ev => Toggle(e.Item.Id, ev)" /></label>
+            <div class="grow">
+                <div class="title">@(e.Item.Title ?? Path.GetFileName(e.Item.Path))</div>
+                <div class="muted">@LibraryActions.Describe(e.Item.Kind) &middot; @Path.GetDirectoryName(e.Item.Path) &middot; @Length(e.Item.DurationMs)</div>
+                @if (e.Episode is not null)
+                {
+                    <div class="muted">@e.Episode.Show @(e.Episode is { Season: { } s, Episode: { } n } ? $"S{s:00}E{n:00}" : "") @e.Episode.EpisodeTitle</div>
+                }
+                @if (e.Tags.Count > 0)
+                {
+                    <div class="tags">@foreach (var t in e.Tags.Where(t => !t.Name.StartsWith("show:"))) { <span class="tag @(t.Source == FactSource.Manual ? "manual" : "")">@t.Name</span> }</div>
+                }
+                @if (note is not null) { <div class="why">@note</div> }
+            </div>
+            <div class="actions">
+                <button class="button" @onclick="() => Watch(e.Item.Path)">Watch</button>
+                <button class="button secondary" @onclick="() => ShowInFolder(e.Item.Path)">Show in folder</button>
+                <button class="button secondary" @onclick="() => ToggleForm(e.Item.Id)">@(openForms.Contains(e.Item.Id) ? "Hide" : "Edit")</button>
+            </div>
+        </div>
+
+        @if (openForms.Contains(e.Item.Id))
+        {
+            <div class="form">
+                <label>What is it?
+                    <select @bind="choice.Kind">
+                        <option value="@MediaKind.Unknown">I don't know yet</option>
+                        <option value="@MediaKind.Commercial">A commercial</option>
+                        <option value="@MediaKind.Episode">A TV episode</option>
+                        <option value="@MediaKind.Movie">A movie</option>
+                        <option value="@MediaKind.Bumper">A bumper (station ID, "we'll be right back")</option>
+                        <option value="@MediaKind.Filler">Filler (plays when nothing else fits)</option>
+                        <option value="@MediaKind.Other">Not something to air (credits, titles, junk)</option>
+                    </select>
+                </label>
+
+                @if (choice.Kind == MediaKind.Episode)
+                {
+                    <label>Which show?
+                        <SearchSelect Options="shows" Value="@choice.Show" ValueChanged="@(v => choice.Show = v)" Placeholder="Type to search shows" AddLabel="＋ New show…" AddPlaceholder="Show name" />
+                    </label>
+                    <label>Season <input type="number" min="0" @bind="choice.Season" /></label>
+                    <label>Episode <input type="number" min="0" @bind="choice.Episode" /></label>
+                    <label>Episode title (optional) <input @bind="choice.EpisodeTitle" /></label>
+                }
+
+                @if (choice.Kind == MediaKind.Commercial)
+                {
+                    <label>Brand (who is the ad for?) <input @bind="choice.Brand" placeholder="e.g. Taco Bell" disabled="@choice.BrandNotNeeded" /></label>
+                    <label class="check"><input type="checkbox" @bind="choice.BrandNotNeeded" /> There is no brand to name</label>
+                    <label>Category
+                        <SearchSelect Options="categories" Value="@choice.Category" ValueChanged="@(v => choice.Category = v)" Placeholder="Type to search, e.g. Food, Cars, Toys" AddLabel="＋ Add a category…" AddPlaceholder="New category name" OnAdd="AddCategory" />
+                    </label>
+                }
+
+                @if (choice.Kind == MediaKind.Bumper)
+                {
+                    <label>What kind of bumper?
+                        <select @bind="choice.ExtraLabels">
+                            <option value="">Not sure</option>
+                            <option value="station-id">Station ID (a network or channel logo)</option>
+                            <option value="break-card">Break card ("we'll be right back", "stay tuned")</option>
+                            <option value="promo">Promo for a show or movie</option>
+                        </select>
+                    </label>
+                }
+                else
+                {
+                    <label>Other labels (optional, separate with commas) <input @bind="choice.ExtraLabels" placeholder="e.g. kids, christmas, late-night" /></label>
+                }
+
+                <button class="button primary" @onclick="() => Save(e.Item.Id)">Save</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<CatalogEntry> Items { get; set; } = [];
+    /// <summary>Optional plain-language note per item, such as why it needs attention.</summary>
+    [Parameter] public Func<long, string?>? NoteFor { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "Nothing here";
+    [Parameter] public string EmptyText { get; set; } = "No files match.";
+    /// <summary>Raised after any save so the page can reload its list.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private readonly Dictionary<long, LabelChoice> choices = new();
+    private readonly HashSet<long> selected = new();
+    private readonly HashSet<long> openForms = new();
+    private LabelChoice bulk = new();
+    private int? bulkNumberFrom;
+    private IReadOnlyList<string> shows = [];
+    private IReadOnlyList<string> categories = [];
+    private string? notice;
+
+    protected override void OnInitialized() => LoadLists();
+
+    protected override void OnParametersSet()
+    {
+        choices.Clear();
+        selected.RemoveWhere(id => Items.All(i => i.Item.Id != id));
+        openForms.RemoveWhere(id => Items.All(i => i.Item.Id != id));
+    }
+
+    private void LoadLists()
+    {
+        if (!Catalog.CatalogExists) return;
+        shows = Catalog.Run(db => db.ListShows());
+        categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
+    }
+
+    private LabelChoice Choice(long id)
+    {
+        if (!choices.TryGetValue(id, out LabelChoice? c))
+        {
+            c = LibraryActions.ChoiceFor(Items.First(i => i.Item.Id == id));
+            choices[id] = c;
+        }
+        return c;
+    }
+
+    private void Toggle(long id, ChangeEventArgs e)
+    {
+        if (e.Value is true) selected.Add(id); else selected.Remove(id);
+    }
+
+    private void SelectAll() { foreach (var i in Items) selected.Add(i.Item.Id); }
+    private void ClearSelection() => selected.Clear();
+    private void ToggleForm(long id) { if (!openForms.Remove(id)) openForms.Add(id); }
+
+    private Task<string> AddCategory(string name)
+    {
+        Catalog.Run(db => db.AddCategory(name));
+        categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
+        notice = $"Added the category \"{name.Trim()}\". It is now a choice for every commercial.";
+        return Task.FromResult(name.Trim());
+    }
+
+    private async Task ApplyBulk()
+    {
+        var ids = Items.Where(i => selected.Contains(i.Item.Id)).Select(i => i.Item.Id).ToList();
+        notice = Actions.ApplyBulk(ids, bulk, bulk.Kind == MediaKind.Episode ? bulkNumberFrom : null);
+        selected.Clear();
+        bulk = new LabelChoice();
+        bulkNumberFrom = null;
+        LoadLists();
+        await OnChanged.InvokeAsync();
+    }
+
+    private void Watch(string path) => notice = Opener.Open(path) ?? $"Opened {Path.GetFileName(path)} in your video player.";
+    private void ShowInFolder(string path) => notice = Opener.ShowInFolder(path) ?? "Opened the folder.";
+
+    private async Task Save(long id)
+    {
+        notice = Actions.Apply(id, Choice(id));
+        openForms.Remove(id);
+        LoadLists();
+        await OnChanged.InvokeAsync();
+    }
+
+    private static string Length(long ms)
+    {
+        var t = TimeSpan.FromMilliseconds(ms);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : t.TotalMinutes >= 1 ? $"{t.Minutes}m {t.Seconds}s" : $"{t.Seconds}s";
+    }
+}

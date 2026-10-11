@@ -89,3 +89,10 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .item .grow { flex: 1; }
 .item.picked { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(36, 87, 197, 0.15); }
 .card.bulk { border-color: var(--accent); background: #f3f7ff; position: sticky; top: 8px; z-index: 10; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag { font-size: 0.8rem; background: #eef1f7; border-radius: 999px; padding: 2px 8px; color: #3b4252; }
+.tag.manual { background: #e3ecff; color: #1c47a3; }
+.search-card .form { align-items: end; }
+.search-card .actions { display: flex; gap: 8px; }
+.pager { display: flex; gap: 12px; align-items: center; margin: 14px 0; }
