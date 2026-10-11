@@ -2,6 +2,7 @@
 @using TickleTV.Scheduler.Core.Catalog
 @using TickleTV.Scheduler.Web.Services
 @inject CatalogAccess Catalog
+@inject ConfigStore Config
 @rendermode InteractiveServer
 
 <PageTitle>Library</PageTitle>
@@ -41,6 +42,7 @@
 
 <p class="muted">@total matching file@(total == 1 ? "" : "s")@(total > PageSize ? $", showing {page * PageSize + 1} to {Math.Min(total, (page + 1) * PageSize)}" : "")
     @if (total > 0) { <text> &middot; </text><a class="link" href="@ExportUrl()" target="_blank">Export this search as a spreadsheet (.csv)</a> }
+    &middot; <label class="inline">Per page <select value="@PageSize" @onchange="SetPageSize"><option value="50">50</option><option value="100">100</option><option value="150">150</option><option value="200">200</option></select></label>
 </p>
 
 <ItemList Items="entries" EmptyTitle="No matches" EmptyText="Try fewer filters or a different word." OnChanged="Reload" />
@@ -55,7 +57,7 @@
 }
 
 @code {
-    private const int PageSize = 50;
+    private int PageSize = 50;
     private string text = "";
     private string kind = "";
     private string show = "";
@@ -70,6 +72,7 @@
 
     protected override void OnInitialized()
     {
+        PageSize = UiPrefs.PageSize(Config);
         if (!Catalog.CatalogExists) return;
         shows = Catalog.Run(db => db.ListShows());
         categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
@@ -99,6 +102,13 @@
         "/export/library.csv?" + string.Join("&", new[] { ("text", text), ("kind", kind), ("show", show), ("category", category), ("tag", tag) }
             .Where(kv => !string.IsNullOrWhiteSpace(kv.Item2))
             .Select(kv => $"{kv.Item1}={Uri.EscapeDataString(kv.Item2)}"));
+
+    private void SetPageSize(ChangeEventArgs e)
+    {
+        PageSize = UiPrefs.SavePageSize(Config, e.Value);
+        page = 0;
+        Reload();
+    }
 
     private void Search() { page = 0; Reload(); }
     private void Clear() { text = ""; kind = ""; show = ""; category = ""; tag = ""; page = 0; Reload(); }

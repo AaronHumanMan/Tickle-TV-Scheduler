@@ -2,6 +2,7 @@
 @using TickleTV.Scheduler.Core.Catalog
 @using TickleTV.Scheduler.Web.Services
 @inject CatalogAccess Catalog
+@inject ConfigStore Config
 @rendermode InteractiveServer
 
 <PageTitle>Needs attention</PageTitle>
@@ -19,7 +20,8 @@
 
 @if (entries.Count > 0)
 {
-    <p class="muted"><a class="link" href="@("/export/review.csv" + (filter is null ? "" : "?reason=" + filter))" target="_blank">Export this list as a spreadsheet (.csv)</a></p>
+    <p class="muted"><a class="link" href="@("/export/review.csv" + (filter is null ? "" : "?reason=" + filter))" target="_blank">Export this list as a spreadsheet (.csv)</a>
+    &middot; <label class="inline">Per page <select value="@PageSize" @onchange="SetPageSize"><option value="50">50</option><option value="100">100</option><option value="150">150</option><option value="200">200</option></select></label></p>
 }
 
 <ItemList Items="entries" NoteFor="NoteFor" EmptyTitle="Nothing to look at" EmptyText="Every file in this list has been labeled." OnChanged="Reload" />
@@ -30,13 +32,23 @@
 }
 
 @code {
-    private const int PageSize = 50;
+    private int PageSize = 50;
     private AttentionReason? filter;
     private IReadOnlyDictionary<AttentionReason, int> counts = new Dictionary<AttentionReason, int>();
     private List<CatalogEntry> entries = [];
     private readonly Dictionary<long, AttentionReason> reasons = new();
 
-    protected override void OnInitialized() => Reload();
+    protected override void OnInitialized()
+    {
+        PageSize = UiPrefs.PageSize(Config);
+        Reload();
+    }
+
+    private void SetPageSize(ChangeEventArgs e)
+    {
+        PageSize = UiPrefs.SavePageSize(Config, e.Value);
+        Reload();
+    }
 
     private void Reload()
     {

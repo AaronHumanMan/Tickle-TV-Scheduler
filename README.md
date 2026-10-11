@@ -58,7 +58,7 @@ This writes `tickletv.yaml` to your data folder (`%LOCALAPPDATA%\TickleTV` on Wi
 dotnet run --project src/TickleTV.Scheduler.Web
 ```
 
-Then open http://localhost:5062 in a browser on the same computer. The app shows what has been scanned, a **Needs attention** list of files the scan couldn't label, and plain-language help. On the Needs attention page, **Watch** opens the file in your default video player and a short form lets you say what it is, which show, the brand and category, and any labels. Answers are kept across rescans. Scanning and building still run from the command line for now; the Help page shows the exact commands.
+Then open http://localhost:5062 in a browser on the same computer. The app shows what has been scanned, a **Needs attention** list of files the scan couldn't label, and plain-language help. On the Needs attention page, **Watch** opens the file in your default video player and a short form lets you say what it is, which show, the brand and category, and any labels. Answers are kept across rescans. The Needs attention and Library pages show 50 results at a time; pick 100, 150 or 200 from the **Per page** menu and the choice is remembered. The Schedule and Build pages can show every channel as a guide grid (channels as rows, hours as columns; press **edit** on a row to change that channel) or as one list per channel; the choice is saved in `tickletv.yaml` under `ui`.
 
 ## Catalog: scan your library
 

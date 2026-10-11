@@ -11,6 +11,7 @@ public sealed class SchedulerConfig
     /// <summary>Folders the app scans. The CLI can scan any folder; the app scans these.</summary>
     public List<string> MediaRoots { get; set; } = [];
     public NextConfig Next { get; set; } = new();
+    public UiConfig Ui { get; set; } = new();
     public List<ChannelConfig> Channels { get; set; } = [];
 
     /// <summary>Folder the config was loaded from; set by <see cref="Load"/>.</summary>
@@ -75,6 +76,17 @@ public sealed class SchedulerConfig
             _ = ch.Defaults.PaddingMode;
         }
     }
+}
+
+/// <summary>How the app shows things; harmless defaults, saved when the person changes them.</summary>
+public sealed class UiConfig
+{
+    /// <summary>list or grid.</summary>
+    public string ScheduleView { get; set; } = "list";
+    /// <summary>list or grid.</summary>
+    public string BuildView { get; set; } = "list";
+    /// <summary>50, 100, 150, or 200.</summary>
+    public int PageSize { get; set; } = 50;
 }
 
 public sealed class NextConfig

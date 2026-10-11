@@ -24,18 +24,30 @@ else
 {
     <div class="card">
         <h2>Your daily schedule</h2>
-        @foreach (var ch in cfg.Channels)
+        <div class="view-toggle">
+            <span class="muted">Show as</span>
+            <button class="chip @(view == "grid" ? "active" : "")" @onclick="@(() => SetView("grid"))">Guide grid</button>
+            <button class="chip @(view == "list" ? "active" : "")" @onclick="@(() => SetView("list"))">Lists</button>
+        </div>
+        @if (view == "grid")
         {
-            <h3>Channel @ch.Number: @ch.Name</h3>
-            <table class="table compact">
-                <thead><tr><th>From</th><th>Show</th><th>Order</th><th>Ends on</th></tr></thead>
-                <tbody>
-                @foreach (var s in ch.Schedule.OrderBy(s => s.StartTime))
-                {
-                    <tr><td>@s.StartTime.ToString("HH:mm")</td><td>@s.Show</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
-                }
-                </tbody>
-            </table>
+            <ScheduleGrid Channels="cfg.Channels" />
+        }
+        else
+        {
+            @foreach (var ch in cfg.Channels)
+            {
+                <h3>Channel @ch.Number: @ch.Name</h3>
+                <table class="table compact">
+                    <thead><tr><th>From</th><th>Show</th><th>Order</th><th>Ends on</th></tr></thead>
+                    <tbody>
+                    @foreach (var s in ch.Schedule.OrderBy(s => s.StartTime))
+                    {
+                        <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Show</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
         }
         <p class="muted">ErsatzTV lineup: @cfg.ResolvePath(cfg.Next.Lineup) &middot; <a href="schedule">Change the schedule</a></p>
     </div>
@@ -60,12 +72,21 @@ else
     private SchedulerConfig? cfg;
     private string? notice;
     private int days = 1;
+    private string view = "list";
+
+    private void SetView(string v)
+    {
+        view = v;
+        if (cfg is null) return;
+        cfg.Ui.BuildView = v;
+        try { Config.Save(cfg); } catch { /* preference only */ }
+    }
     private string DaysWord => days <= 1 ? "the next 24 hours" : $"the next {Math.Clamp(days, 1, BuildOptions.MaxDays)} days";
 
     protected override void OnInitialized()
     {
         Jobs.Changed += OnJobChanged;
-        try { cfg = Config.Load(); }
+        try { cfg = Config.Load(); view = cfg.Ui.BuildView == "grid" ? "grid" : "list"; }
         catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException) { cfg = null; notice = ex.Message; }
     }
 

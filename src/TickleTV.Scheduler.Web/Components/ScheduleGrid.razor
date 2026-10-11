@@ -1,0 +1,87 @@
+@* A guide-style grid: channels as rows, hours as columns, each slot a coloured block spanning its hours. *@
+@using TickleTV.Scheduler.Core.Config
+
+<div class="table-wrap">
+<table class="table grid">
+    <thead>
+        <tr>
+            <th class="g-ch">Channel</th>
+            @for (int h = 0; h < 24; h++)
+            {
+                <th class="g-h">@Hour(h)</th>
+            }
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var ch in Channels)
+    {
+        bool open = Expanded.Contains(ch.Number);
+        <tr>
+            <td class="g-ch">
+                <strong>@ch.Number</strong> @ch.Name
+                @if (Expandable)
+                {
+                    <br /><button class="link" @onclick="() => OnToggle.InvokeAsync(ch.Number)">@(open ? "hide settings" : "edit")</button>
+                }
+            </td>
+            @foreach (var block in Blocks(ch))
+            {
+                <td class="g-slot @("c" + block.Colour)" colspan="@block.Span" title="@block.Title">
+                    <div class="g-show">@block.Show</div>
+                    <div class="g-time">@block.Time</div>
+                </td>
+            }
+        </tr>
+        @if (open && ChildContent is not null)
+        {
+            <tr class="g-expanded"><td colspan="25">@ChildContent(ch)</td></tr>
+        }
+    }
+    </tbody>
+</table>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ChannelConfig> Channels { get; set; } = [];
+    [Parameter] public bool Expandable { get; set; }
+    [Parameter] public HashSet<string> Expanded { get; set; } = new();
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+    [Parameter] public RenderFragment<ChannelConfig>? ChildContent { get; set; }
+
+    private sealed record Block(string Show, string Time, int Span, int Colour, string Title);
+
+    private static string Hour(int h) => h == 0 ? "12am" : h < 12 ? $"{h}am" : h == 12 ? "12pm" : $"{h - 12}pm";
+
+    /// <summary>Which slot owns each hour, then merge runs of the same slot into one cell.</summary>
+    private static List<Block> Blocks(ChannelConfig ch)
+    {
+        var slots = ch.Schedule.Where(s => TimeOnly.TryParse(s.Time, out _)).OrderBy(s => s.StartTime).ToList();
+        var blocks = new List<Block>();
+        if (slots.Count == 0)
+        {
+            blocks.Add(new Block("No slots yet", "", 24, 0, ""));
+            return blocks;
+        }
+        var colours = slots.Select(s => s.Show).Distinct(StringComparer.OrdinalIgnoreCase).Select((s, i) => (s, i)).ToDictionary(x => x.s, x => x.i % 6 + 1, StringComparer.OrdinalIgnoreCase);
+
+        SlotConfig? current = null;
+        int span = 0;
+        for (int h = 0; h < 24; h++)
+        {
+            var now = new TimeOnly(h, 0);
+            SlotConfig owner = slots.LastOrDefault(s => s.StartTime <= now) ?? slots[^1];
+            if (current is not null && ReferenceEquals(owner, current)) { span++; continue; }
+            if (current is not null) blocks.Add(Make(current, span, colours));
+            current = owner;
+            span = 1;
+        }
+        if (current is not null) blocks.Add(Make(current, span, colours));
+        return blocks;
+    }
+
+    private static Block Make(SlotConfig s, int span, Dictionary<string, int> colours)
+    {
+        string order = s.OrderMode == OrderMode.Shuffle ? "shuffled" : "in order";
+        return new Block(s.Show, s.StartTime.ToString("h:mm tt").ToLowerInvariant(), span, colours.GetValueOrDefault(s.Show, 1), $"{s.Show} from {s.StartTime:h:mm tt}, {order}");
+    }
+}
