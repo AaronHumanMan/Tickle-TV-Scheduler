@@ -1,19 +1,30 @@
 @inherits LayoutComponentBase
 
-<div class="shell">
-    <nav class="sidebar">
+<div class="lcars">
+    <div class="lcars-top">
+        <div class="elbow"></div>
+        <div class="bar b1"></div>
+        <div class="bar b2"></div>
         <div class="brand">Tickle TV</div>
-        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Home</NavLink>
-        <NavLink class="nav-link" href="scan">Scan</NavLink>
-        <NavLink class="nav-link" href="review">Needs attention</NavLink>
-        <NavLink class="nav-link" href="library">Library</NavLink>
-        <NavLink class="nav-link" href="shows">My shows</NavLink>
-        <NavLink class="nav-link" href="categories">Categories</NavLink>
-        <NavLink class="nav-link" href="schedule">Schedule</NavLink>
-        <NavLink class="nav-link" href="build">Build</NavLink>
-        <NavLink class="nav-link" href="help">Help</NavLink>
-    </nav>
-    <main class="content">
-        @Body
-    </main>
+        <div class="bar b3"></div>
+        <div class="cap"></div>
+    </div>
+    <div class="lcars-body">
+        <nav class="sidebar">
+            <div class="arm"></div>
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Home</NavLink>
+            <NavLink class="nav-link" href="scan">Scan</NavLink>
+            <NavLink class="nav-link" href="review">Needs attention</NavLink>
+            <NavLink class="nav-link" href="library">Library</NavLink>
+            <NavLink class="nav-link" href="shows">My shows</NavLink>
+            <NavLink class="nav-link" href="categories">Categories</NavLink>
+            <NavLink class="nav-link" href="schedule">Schedule</NavLink>
+            <NavLink class="nav-link" href="build">Build</NavLink>
+            <NavLink class="nav-link" href="help">Help</NavLink>
+            <div class="foot"></div>
+        </nav>
+        <main class="content">
+            @Body
+        </main>
+    </div>
 </div>
