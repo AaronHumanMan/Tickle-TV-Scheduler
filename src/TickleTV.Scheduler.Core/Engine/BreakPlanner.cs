@@ -55,7 +55,9 @@ public static class BreakPlanner
             cuts = ChooseEvenly(cuts, policy.MaxMidBreaks, durationMs, coldOpen);
             cuts = EnforceMinAct(cuts, policy.MinActMs);
         }
-        else if (policy.FallbackBreaks > 0)
+
+        // Chapters that yield no usable cut (one mark near the end, say) are as good as none: fall back.
+        if (cuts.Count == 0 && policy.FallbackBreaks > 0)
         {
             int n = Math.Min(policy.FallbackBreaks, policy.MaxMidBreaks);
             for (int i = 1; i <= n; i++)

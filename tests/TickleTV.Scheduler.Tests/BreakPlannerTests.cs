@@ -89,4 +89,14 @@ public class BreakPlannerTests
         Assert.Single(acts);
         Assert.Equal(new Act(0, 30 * Min), acts[0]);
     }
+
+    [Fact]
+    public void Chapters_that_give_no_usable_cut_fall_back_to_even_spacing()
+    {
+        long duration = 22 * Min;
+        var chapters = Chapters(0, 21 * Min + 30_000); // one mark 30 s before the end
+        var acts = BreakPlanner.PlanActs(duration, chapters, new BreakPolicy { MaxMidBreaks = 3, MinActMs = 2 * Min, FallbackBreaks = 2 });
+
+        Assert.Equal(3, acts.Count);
+    }
 }
