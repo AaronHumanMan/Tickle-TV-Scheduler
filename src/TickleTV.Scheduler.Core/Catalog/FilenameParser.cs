@@ -238,7 +238,16 @@ public static partial class FilenameParser
     private static string? Brand(string name)
     {
         string[] parts = DashSeparator().Split(name, 2);
-        if (parts.Length < 2) return null;
+        if (parts.Length < 2)
+        {
+            // "Aetna insurance" or "Hyundai Cat Commercial 1992": a short dash-less title is the brand itself,
+            // once filler words and the year are dropped. Long descriptions are not.
+            string bare = Year().Replace(CommercialWords().Replace(name, ""), "").Trim();
+            bare = Regex.Replace(bare, @"\s{2,}", " ");
+            int words = bare.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            if (words is >= 1 and <= 5 && !Unbranded().IsMatch(bare) && !IsNumeric(bare)) return Slug(bare);
+            return null;
+        }
         string head = parts[0].Trim();
         if (head.Length == 0 || head.Length > 60 || IsNumeric(head)) return null;
         if (CommercialWords().IsMatch(head) || head.Contains("footage", StringComparison.OrdinalIgnoreCase)) return null;

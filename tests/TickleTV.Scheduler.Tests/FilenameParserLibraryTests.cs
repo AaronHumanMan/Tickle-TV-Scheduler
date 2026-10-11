@@ -88,6 +88,23 @@ public class FilenameParserLibraryTests
         Assert.Contains("network:fox-kids-network-bumper", p.Tags);
     }
 
+    [Theory]
+    [InlineData("Aetna insurance.mkv", "brand:aetna-insurance")]
+    [InlineData("Hyundai Cat Commercial 1992 (480p_30fps_H264-128kbit_AAC).mp4", "brand:hyundai-cat")]
+    [InlineData("Bugflector commercial 1999.mp4", "brand:bugflector")]
+    public void Short_dashless_titles_are_their_own_brand(string name, string expectedTag)
+    {
+        ParsedName p = FilenameParser.Parse(@"G:\Commercials\90s\Cars\" + name);
+        Assert.Contains(expectedTag, p.Tags);
+    }
+
+    [Fact]
+    public void Long_dashless_descriptions_get_no_brand()
+    {
+        ParsedName p = FilenameParser.Parse(@"G:\Commercials\90s\Uncategorized\Culinary school kitchen black and white and a chef plating a dish slowly.mkv");
+        Assert.DoesNotContain(p.Tags, t => t.StartsWith("brand:"));
+    }
+
     [Fact]
     public void Decade_in_a_product_name_does_not_override_the_folder_decade()
     {
