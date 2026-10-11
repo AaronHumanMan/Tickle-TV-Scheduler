@@ -17,6 +17,8 @@ public sealed record ScanReport
     public int Moved { get; init; }
     public int Unchanged { get; init; }
     public int Missing { get; init; }
+    /// <summary>Files whose facts came from a .nfo sidecar during this scan.</summary>
+    public int WithSidecar { get; init; }
     public IReadOnlyList<string> Unclassified { get; init; } = [];
     public IReadOnlyList<string> Errors { get; init; } = [];
 }
@@ -24,6 +26,7 @@ public sealed record ScanReport
 /// <summary>
 /// Walks media roots and keeps the catalog in step with the disk. A file is probed once; it is re-probed only
 /// when its size or modified time changes. A file that moved keeps its identity, tags, and plays via its content hash.
+/// Facts come from a .nfo sidecar when there is one (see <see cref="NfoSidecar"/>), else from the file name.
 /// </summary>
 public sealed class Scanner
 {
@@ -42,7 +45,7 @@ public sealed class Scanner
 
     public async Task<ScanReport> ScanAsync(IReadOnlyList<string> roots, CancellationToken ct = default, IProgress<ScanProgress>? progress = null)
     {
-        int added = 0, updated = 0, moved = 0, unchanged = 0;
+        int added = 0, updated = 0, moved = 0, unchanged = 0, withSidecar = 0;
         var unclassified = new List<string>();
         var errors = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -79,7 +82,15 @@ public sealed class Scanner
 
                     if (byPath is not null && byPath.FileSize == info.Length && SameSecond(byPath.ModifiedUtc, modified) && byPath.MissingUtc is null)
                     {
-                        unchanged++;
+                        // The video is as before, but a sidecar written since the last scan carries new facts.
+                        if (NfoSidecar.ChangedSince(file, byPath.ProbedUtc))
+                        {
+                            RefreshFacts(byPath, now);
+                            withSidecar++;
+                            updated++;
+                            _log?.Invoke($"sidecar  {file}");
+                        }
+                        else unchanged++;
                         continue;
                     }
 
@@ -96,7 +107,8 @@ public sealed class Scanner
                     }
 
                     MediaProbe probe = await _prober.ProbeAsync(file, ct);
-                    ParsedName parsed = FilenameParser.Parse(file);
+                    ParsedName parsed = ParseFacts(file);
+                    if (HasSidecarFacts(parsed)) withSidecar++;
                     MediaItem fresh = ToItem(file, info.Length, modified, hash, probe, parsed, now);
 
                     long id;
@@ -153,37 +165,48 @@ public sealed class Scanner
 
         return new ScanReport
         {
-            Added = added, Updated = updated, Moved = moved, Unchanged = unchanged, Missing = missing,
+            Added = added, Updated = updated, Moved = moved, Unchanged = unchanged, Missing = missing, WithSidecar = withSidecar,
             Unclassified = unclassified, Errors = errors,
         };
     }
 
     /// <summary>
-    /// Re-runs the name parser over every catalogued file without probing, refreshing kind, title, year,
-    /// episode facts, and automatic tags. Anything a person set by hand is left alone.
+    /// Re-reads sidecars and re-runs the name parser over every catalogued file without probing, refreshing
+    /// kind, title, year, episode facts, and automatic tags. Anything a person set by hand is left alone.
     /// </summary>
     public int Retag()
     {
         int changed = 0;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
         foreach (MediaItem item in _db.ListItems(includeMissing: false))
         {
-            ParsedName parsed = FilenameParser.Parse(item.Path);
-            if (item.KindSource != FactSource.Manual)
-            {
-                _db.UpdateParsedFacts(item.Id, parsed.Kind, parsed.KindSource, parsed.Title, parsed.Year);
-            }
-            if (parsed.Show is not null)
-            {
-                _db.UpsertEpisode(item.Id, new EpisodeInfo
-                {
-                    Show = parsed.Show, Season = parsed.Season, Episode = parsed.Episode, AirDate = parsed.AirDate,
-                    EpisodeTitle = parsed.EpisodeTitle, Source = parsed.ShowSource ?? FactSource.Filename,
-                });
-            }
-            ApplyAutoTags(item.Id, parsed, _db.FindById(item.Id)!);
+            RefreshFacts(item, now);
             changed++;
         }
         return changed;
+    }
+
+    /// <summary>The file-name guess with any .nfo sidecar facts laid over it.</summary>
+    public static ParsedName ParseFacts(string path) => NfoSidecar.Enrich(FilenameParser.Parse(path), path);
+
+    private static bool HasSidecarFacts(ParsedName parsed) => parsed.KindSource == FactSource.Nfo || parsed.ShowSource == FactSource.Nfo;
+
+    /// <summary>Re-derives an item's facts from its sidecar and name, keeping manual answers, without probing the video.</summary>
+    private void RefreshFacts(MediaItem item, DateTimeOffset now)
+    {
+        ParsedName parsed = ParseFacts(item.Path);
+        if (item.KindSource != FactSource.Manual)
+            _db.UpdateParsedFacts(item.Id, parsed.Kind, parsed.KindSource, parsed.Title, parsed.Year);
+        if (parsed.Show is not null)
+        {
+            _db.UpsertEpisode(item.Id, new EpisodeInfo
+            {
+                Show = parsed.Show, Season = parsed.Season, Episode = parsed.Episode, AirDate = parsed.AirDate,
+                EpisodeTitle = parsed.EpisodeTitle, Source = parsed.ShowSource ?? FactSource.Filename,
+            });
+        }
+        ApplyAutoTags(item.Id, parsed, _db.FindById(item.Id)!);
+        _db.MarkFactsRefreshed(item.Id, now);
     }
 
     private void ApplyAutoTags(long id, ParsedName parsed, MediaItem item)

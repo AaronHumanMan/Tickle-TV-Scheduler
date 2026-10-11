@@ -26,7 +26,7 @@ public static class ScanCommand
             ScanReport r = await scanner.ScanAsync(p.GetRequiredValue(roots).Select(d => d.FullName).ToList(), ct);
 
             Console.WriteLine();
-            Console.WriteLine($"Added {r.Added}, updated {r.Updated}, moved {r.Moved}, unchanged {r.Unchanged}, missing {r.Missing}.");
+            Console.WriteLine($"Added {r.Added}, updated {r.Updated}, moved {r.Moved}, unchanged {r.Unchanged}, missing {r.Missing}." + (r.WithSidecar > 0 ? $" {r.WithSidecar} took details from .nfo files." : ""));
             if (r.Unclassified.Count > 0)
             {
                 Console.WriteLine($"\n{r.Unclassified.Count} file(s) could not be classified. Set a kind with: catalog kind <id> <commercial|bumper|filler|movie|episode>");

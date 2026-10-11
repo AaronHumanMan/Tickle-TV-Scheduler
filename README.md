@@ -62,7 +62,7 @@ Then open http://localhost:5062 in a browser on the same computer. The app shows
 
 ## Catalog: scan your library
 
-The catalog is a SQLite file. Media can live in any folder layout; files are classified from their names and folder hints, and anything the scan gets wrong is fixed once by hand and stays fixed.
+The catalog is a SQLite file. Media can live in any folder layout; files are classified from a Kodi-style `.nfo` sidecar when there is one, else from their names and folder hints, and anything the scan gets wrong is fixed once by hand and stays fixed.
 
 ```
 dotnet run --project src/TickleTV.Scheduler.Cli -- scan "E:\TBTV Test" --db tickletv.sqlite
@@ -75,6 +75,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- catalog tag 12 kids station-i
 
 What the scan understands:
 
+- A `.nfo` file next to the video (`Episode.nfo` beside `Episode.mkv`, as Kodi, Jellyfin, Emby and tinyMediaManager write them) supplies show, season, episode, title, air date, year and genre, and beats the file name. `tvshow.nfo` in the show or season folder supplies the show name and genres. A `<movie>` sidecar marks a film. Genres become `genre:` tags. A rescan re-reads a sidecar that changed since the last scan without re-probing the video; `catalog retag` re-reads them all. Manual answers still win.
 - `Show S04E04 Title.mkv`, `257 - 1990-10-15 - TNG S04 E04 - Family.mkv`, and `Show 3x07 Title.mkv` are episodes. The air date, when present, drives chronological order.
 - `S05E02 Cape Feare.mkv` inside `The Simpsons\Season 1\` takes its show name from the folder above the season folder.
 - Words like Commercial, PSA, Promo, Bumper, Ident, Filler, and Fallback in the file or folder name set the kind. A four-digit year becomes `1991` and `1990s` tags.

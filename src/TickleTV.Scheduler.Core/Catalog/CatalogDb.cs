@@ -165,6 +165,10 @@ public sealed class CatalogDb : IDisposable
         Exec("UPDATE media_items SET kind = @k, kind_source = @ks, title = @t, year = COALESCE(@y, year) WHERE id = @id AND kind_source <> 'manual'", null,
             ("@id", id), ("@k", kind.ToString()), ("@ks", kindSource), ("@t", title), ("@y", year));
 
+    /// <summary>Records that the item's facts were re-read (for example from a newer .nfo sidecar) without re-probing the video.</summary>
+    public void MarkFactsRefreshed(long id, DateTimeOffset when) =>
+        Exec("UPDATE media_items SET probed_utc = @w WHERE id = @id", null, ("@id", id), ("@w", Iso(when)));
+
     public void UpdatePath(long id, string newPath, long size, DateTimeOffset modifiedUtc) =>
         Exec("UPDATE media_items SET path = @p, file_size = @s, modified_utc = @m, missing_utc = NULL WHERE id = @id", null,
             ("@id", id), ("@p", newPath), ("@s", size), ("@m", Iso(modifiedUtc)));

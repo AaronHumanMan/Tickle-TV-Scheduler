@@ -27,7 +27,7 @@ public static class ParseCommand
                     : [root];
                 foreach (string file in files.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
                 {
-                    ParsedName r = FilenameParser.Parse(file);
+                    ParsedName r = Scanner.ParseFacts(file);
                     counts[r.Kind] = counts.GetValueOrDefault(r.Kind) + 1;
                     if (p.GetValue(summary)) continue;
 

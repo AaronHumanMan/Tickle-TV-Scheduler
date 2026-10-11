@@ -18,6 +18,8 @@ public static class FactSource
     public const string Manual = "manual";
     public const string Filename = "filename";
     public const string Folder = "folder";
+    /// <summary>A Kodi/Jellyfin/Plex-style .nfo sidecar next to the video, see <see cref="NfoSidecar"/>.</summary>
+    public const string Nfo = "nfo";
     public const string Default = "default";
 }
 
