@@ -18,19 +18,20 @@ public static class BuildCommand
 {
     public static Command Create()
     {
-        var config = new Option<FileInfo>("--config", "-c") { Description = "Scheduler YAML config.", DefaultValueFactory = _ => new FileInfo("tickletv.yaml") };
+        var config = ConfigLocator.ConfigOption();
         var from = new Option<string?>("--from") { Description = "Window start, ISO 8601 (default: next whole minute)." };
         var hours = new Option<int?>("--hours") { Description = "Override every channel's horizon." };
         var channel = new Option<string?>("--channel") { Description = "Build only this channel number." };
         var dryRun = new Option<bool>("--dry-run") { Description = "Print the plan, write nothing, change no state." };
         var seed = new Option<int?>("--seed") { Description = "Random seed for shuffle order (reproducible builds)." };
+        var fresh = new Option<bool>("--fresh") { Description = "Ignore the episodes the existing window already assigned and pick again from the rotation." };
 
         var cmd = new Command("build", "Build playout windows for all channels and write them for Next.");
-        foreach (Option o in new Option[] { config, from, hours, channel, dryRun, seed }) cmd.Options.Add(o);
+        foreach (Option o in new Option[] { config, from, hours, channel, dryRun, seed, fresh }) cmd.Options.Add(o);
 
         cmd.SetAction(async (p, ct) =>
         {
-            SchedulerConfig cfg = SchedulerConfig.Load(p.GetRequiredValue(config).FullName);
+            SchedulerConfig cfg = SchedulerConfig.Load(ConfigLocator.Resolve(p.GetValue(config)));
             string lineupPath = cfg.ResolvePath(cfg.Next.Lineup);
             Lineup lineup = ReadLineup(lineupPath);
             bool dry = p.GetValue(dryRun);
@@ -50,15 +51,32 @@ public static class BuildCommand
                     continue;
                 }
 
-                DateTimeOffset until = start.AddHours(p.GetValue(hours) ?? ch.HorizonHours);
-                Console.WriteLine($"== Channel {ch.Number} ({ch.Name}) {start:yyyy-MM-dd HH:mm} to {until:yyyy-MM-dd HH:mm}{(dry ? " [dry run]" : "")}");
+                // Cut in at the end of whatever is airing now: the current show finishes as planned, the new
+                // schedule begins at its end, and the items before the cut are carried into the new file.
+                string playoutFolder = lc.PlayoutFolder;
+                string tvgId = string.IsNullOrWhiteSpace(ch.TvgId) ? lc.TvgId ?? $"tickle.{ch.Number}" : ch.TvgId;
+                string? xmltvPath = lineup.XmltvFolder is { } xf ? Path.Combine(xf, XmltvWriter.FileName(tvgId)) : null;
+                (DateTimeOffset cut, Playout? carried, string? carriedFile) = FindCutIn(playoutFolder, xmltvPath, start);
+
+                DateTimeOffset until = cut.AddHours(p.GetValue(hours) ?? ch.HorizonHours);
+                Console.WriteLine($"== Channel {ch.Number} ({ch.Name}) {cut:yyyy-MM-dd HH:mm} to {until:yyyy-MM-dd HH:mm}{(dry ? " [dry run]" : "")}");
+                if (cut != start) Console.WriteLine($"   (joining at the end of the programme on air; {carried?.Items.Count(i => i.Finish <= cut) ?? 0} earlier items carried over)");
+
+                // A rebuild keeps the episodes the previous window already assigned from this point on.
+                var prior = new Dictionary<string, Queue<long>>(StringComparer.OrdinalIgnoreCase);
+                foreach ((long itemId, _, string context) in p.GetValue(fresh) ? [] : db.ListSlotPlays(ch.Number, cut))
+                {
+                    if (ChannelBuilder.ShowFromSlotContext(context) is not { } show) continue;
+                    if (!prior.TryGetValue(show, out Queue<long>? q)) prior[show] = q = new Queue<long>();
+                    q.Enqueue(itemId);
+                }
 
                 db.BeginWork();
                 BuildResult result;
                 try
                 {
-                    var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, Console.WriteLine);
-                    result = builder.Build(start, until);
+                    var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, Console.WriteLine) { PriorAssignments = prior };
+                    result = builder.Build(cut, until);
                 }
                 catch
                 {
@@ -75,21 +93,24 @@ public static class BuildCommand
                     continue;
                 }
 
+                db.DeletePlays(ch.Number, cut);
                 foreach (PlayRecord play in result.Plays)
                     db.RecordPlay(play.ItemId, ch.Number, play.AiredAt, play.Context);
 
-                string playoutFolder = lc.PlayoutFolder;
                 Directory.CreateDirectory(playoutFolder);
-                RemoveOverlappingWindows(playoutFolder, start);
-                string playoutPath = Path.Combine(playoutFolder, PlayoutJson.FileName(result.Start, result.End));
-                await WriteAtomicAsync(playoutPath, PlayoutJson.Serialize(result.Playout), ct);
+                List<PlayoutItem> items = [.. carried?.Items.Where(i => i.Finish <= cut) ?? [], .. result.Playout.Items];
+                DateTimeOffset fileStart = items[0].Start;
+                var playout = result.Playout with { Items = items };
+                string playoutPath = Path.Combine(playoutFolder, PlayoutJson.FileName(fileStart, result.End));
+                RemoveOverlappingWindows(playoutFolder, cut, keep: playoutPath);
+                await WriteAtomicAsync(playoutPath, PlayoutJson.Serialize(playout), ct);
+                if (carriedFile is not null && !string.Equals(carriedFile, playoutPath, StringComparison.OrdinalIgnoreCase) && File.Exists(carriedFile))
+                    File.Delete(carriedFile);
 
-                string tvgId = string.IsNullOrWhiteSpace(ch.TvgId) ? lc.TvgId ?? $"tickle.{ch.Number}" : ch.TvgId;
-                if (lineup.XmltvFolder is { } xmltvFolder)
+                if (xmltvPath is not null)
                 {
-                    Directory.CreateDirectory(xmltvFolder);
-                    string xmltvPath = Path.Combine(xmltvFolder, XmltvWriter.FileName(tvgId));
-                    var merged = MergeGuide(xmltvPath, start, result.Programmes);
+                    Directory.CreateDirectory(Path.GetDirectoryName(xmltvPath)!);
+                    var merged = MergeGuide(xmltvPath, cut, result.Programmes);
                     await WriteAtomicAsync(xmltvPath, XmltvWriter.Write(tvgId, merged), ct);
                 }
 
@@ -135,17 +156,59 @@ public static class BuildCommand
     private static string Resolve(string baseDir, string path) =>
         Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDir, path));
 
-    /// <summary>Drops playout files that reach into the new window; the new build owns everything from its start.</summary>
-    private static void RemoveOverlappingWindows(string folder, DateTimeOffset start)
+    /// <summary>Drops playout files that reach past the cut; the new build owns everything from there.</summary>
+    private static void RemoveOverlappingWindows(string folder, DateTimeOffset cut, string? keep = null)
     {
         foreach (string file in Directory.EnumerateFiles(folder, "*.json"))
+        {
+            if (keep is not null && string.Equals(file, keep, StringComparison.OrdinalIgnoreCase)) continue;
+            string name = Path.GetFileNameWithoutExtension(file);
+            int underscore = name.IndexOf('_');
+            if (underscore < 0) continue;
+            if (TryParseCompact(name[(underscore + 1)..], out DateTimeOffset finish) && finish > cut)
+                File.Delete(file);
+        }
+    }
+
+    /// <summary>
+    /// Where a rebuild joins the running schedule: the stop time of the guide programme that contains
+    /// <paramref name="start"/>, when an existing window covers it; otherwise <paramref name="start"/> itself.
+    /// Also returns that window's playout so its items before the cut can be carried into the new file.
+    /// </summary>
+    private static (DateTimeOffset Cut, Playout? Carried, string? File) FindCutIn(string playoutFolder, string? xmltvPath, DateTimeOffset start)
+    {
+        if (!Directory.Exists(playoutFolder)) return (start, null, null);
+        string? covering = null;
+        foreach (string file in Directory.EnumerateFiles(playoutFolder, "*.json"))
         {
             string name = Path.GetFileNameWithoutExtension(file);
             int underscore = name.IndexOf('_');
             if (underscore < 0) continue;
-            if (TryParseCompact(name[(underscore + 1)..], out DateTimeOffset finish) && finish > start)
-                File.Delete(file);
+            if (TryParseCompact(name[..underscore], out DateTimeOffset s) && TryParseCompact(name[(underscore + 1)..], out DateTimeOffset f) && s <= start && f > start)
+                covering = file;
         }
+        if (covering is null) return (start, null, null);
+
+        Playout carried;
+        try { carried = PlayoutJson.Deserialize(File.ReadAllText(covering)); }
+        catch (Exception) { return (start, null, null); }
+
+        DateTimeOffset cut = start;
+        if (xmltvPath is not null && File.Exists(xmltvPath))
+        {
+            XDocument doc = XDocument.Load(xmltvPath);
+            foreach (XElement p in doc.Root?.Elements("programme") ?? [])
+            {
+                if (TryParseXmltv(p.Attribute("start")?.Value, out DateTimeOffset ps) && TryParseXmltv(p.Attribute("stop")?.Value, out DateTimeOffset pe) && ps <= start && pe > start)
+                {
+                    cut = pe;
+                    break;
+                }
+            }
+        }
+        // The cut must land on an item boundary of the carried window; otherwise fall back to the window start.
+        if (!carried.Items.Any(i => i.Finish == cut)) cut = start;
+        return (cut, carried, covering);
     }
 
     /// <summary>Parses Next's compact file-name timestamp, e.g. <c>20261010T234000.000000000-0500</c>.</summary>

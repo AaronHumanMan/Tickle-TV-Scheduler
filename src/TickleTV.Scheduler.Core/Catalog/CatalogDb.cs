@@ -267,6 +267,16 @@ public sealed class CatalogDb : IDisposable
         Exec("INSERT INTO plays (item_id, channel, aired_at, context) VALUES (@id, @c, @a, @x)", null,
             ("@id", itemId), ("@c", channel), ("@a", Iso(airedAt)), ("@x", context));
 
+    /// <summary>Slot (episode) plays for a channel from <paramref name="since"/> on, in air order. Used to keep a rebuild's episode picks stable.</summary>
+    public IReadOnlyList<(long ItemId, DateTimeOffset AiredAt, string Context)> ListSlotPlays(string channel, DateTimeOffset since) =>
+        Query("SELECT item_id, aired_at, context FROM plays WHERE channel = @c AND aired_at >= @s AND context LIKE 'slot %' ORDER BY aired_at",
+            r => (r.GetInt64(0), DateTimeOffset.Parse(r.GetString(1), CultureInfo.InvariantCulture), r.GetString(2)),
+            ("@c", channel), ("@s", Iso(since)));
+
+    /// <summary>Removes a channel's plays from <paramref name="since"/> on: a rebuild replaces that window's history.</summary>
+    public void DeletePlays(string channel, DateTimeOffset since) =>
+        Exec("DELETE FROM plays WHERE channel = @c AND aired_at >= @s", null, ("@c", channel), ("@s", Iso(since)));
+
     public DateTimeOffset? LastPlayed(long itemId, string? channel = null)
     {
         string sql = "SELECT MAX(aired_at) FROM plays WHERE item_id = @id" + (channel is null ? "" : " AND channel = @c");

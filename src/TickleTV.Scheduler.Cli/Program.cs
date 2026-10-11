@@ -8,5 +8,6 @@ root.Subcommands.Add(ScanCommand.Create());
 root.Subcommands.Add(CatalogCommand.Create());
 root.Subcommands.Add(BuildCommand.Create());
 root.Subcommands.Add(ParseCommand.Create());
+root.Subcommands.Add(InitCommand.Create());
 
 return await root.Parse(args).InvokeAsync();

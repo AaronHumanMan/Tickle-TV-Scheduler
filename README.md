@@ -44,6 +44,14 @@ Options: `--pad 30|60|5|10|none`, `--max-breaks N`, `--min-act SECONDS`, `--pre-
 
 Next rejects playout files newer than the schema it supports. Next 0.2.0 accepts up to 0.0.5 (the default here). The engine embedded in legacy ErsatzTV accepts 0.0.4, so pass `--schema-version 0.0.4` for it.
 
+## Set up
+
+```
+dotnet run --project src/TickleTV.Scheduler.Cli -- init
+```
+
+This writes `tickletv.yaml` to your data folder (`%LOCALAPPDATA%\TickleTV` on Windows, `~/.local/share/TickleTV` elsewhere), finds Next's `lineup.json` when it can, and names a catalog beside the config. Every command looks for `tickletv.yaml` in the current folder first, then in the data folder, so `--config` and `--db` are only needed to point elsewhere.
+
 ## Catalog: scan your library
 
 The catalog is a SQLite file. Media can live in any folder layout; files are classified from their names and folder hints, and anything the scan gets wrong is fixed once by hand and stays fixed.
@@ -77,7 +85,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 
 - `order: chronological` follows original air date (season and episode as fallback) and wraps. `order: shuffle` airs every episode once before any repeats. Position is remembered per show and channel across builds.
 - `ads.pool` is a query over the catalog: `kind = commercial AND era within 3 AND NOT tag:late-night`. `ads.cooldown_minutes` keeps a clip off air after it plays.
-- A rebuild replaces every playout window from its start time forward and merges the guide, so config edits reach the air on the next build. `--dry-run` prints the plan and changes nothing, including rotation state.
+- A rebuild joins the running schedule at the end of the programme on air: what's playing finishes as planned, the new schedule starts there, and earlier items are carried into the new file. It keeps the episodes the old window had already assigned, so rebuilding does not move shows forward; pass `--fresh` to pick again. `--dry-run` prints the plan and changes nothing, including rotation state.
 - `bumpers` brackets each break with a clip before the ads and one after, drawn from a pool, rotating so the same bumper isn't seen every break. Tag bumpers `break-out` and `break-in` and set `before_tag` / `after_tag` to split the roles.
 - `filler` names a clip that covers whatever ads and bumpers cannot fill exactly, playing from its start and looping as needed. Without one, gaps are black video with silence. Any file with Filler, Fallback, or Slate in its name is a filler.
 - `cold_open_break` keeps the cut right after a short first chapter (a teaser or cold open), the way real TV breaks.

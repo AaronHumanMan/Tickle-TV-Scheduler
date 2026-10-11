@@ -41,6 +41,20 @@ public sealed class ChannelBuilder
         _log = log;
     }
 
+    /// <summary>
+    /// Episodes a previous build of this window already assigned, per show, in air order. A rebuild consumes
+    /// these before asking the picker, so re-running a build does not move every show forward.
+    /// </summary>
+    public IReadOnlyDictionary<string, Queue<long>> PriorAssignments { get; init; } = new Dictionary<string, Queue<long>>();
+
+    /// <summary>Parses the show out of a slot play's context, "slot HH:mm Show Name".</summary>
+    public static string? ShowFromSlotContext(string context)
+    {
+        if (!context.StartsWith("slot ", StringComparison.Ordinal)) return null;
+        int secondSpace = context.IndexOf(' ', 5);
+        return secondSpace < 0 ? null : context[(secondSpace + 1)..];
+    }
+
     public BuildResult Build(DateTimeOffset from, DateTimeOffset until)
     {
         var items = new List<PlayoutItem>();
@@ -67,7 +81,7 @@ public sealed class ChannelBuilder
         while (cursor < until)
         {
             (SlotConfig slot, DateTimeOffset nextSlotStart) = ActiveSlot(slots, cursor);
-            CatalogEntry? episode = _picker.Next(slot.Show, _channel.Number, slot.OrderMode);
+            CatalogEntry? episode = ReusePrior(slot.Show) ?? _picker.Next(slot.Show, _channel.Number, slot.OrderMode);
 
             if (episode is null)
             {
@@ -148,6 +162,19 @@ public sealed class ChannelBuilder
             Plays = plays,
             Warnings = warnings,
         };
+    }
+
+    private CatalogEntry? ReusePrior(string show)
+    {
+        var match = PriorAssignments.FirstOrDefault(kv => string.Equals(kv.Key, show, StringComparison.OrdinalIgnoreCase));
+        if (match.Value is null) return null;
+        while (match.Value.Count > 0)
+        {
+            long id = match.Value.Dequeue();
+            CatalogEntry? entry = _db.GetEntry(id);
+            if (entry is not null && entry.Item.MissingUtc is null) return entry;
+        }
+        return null;
     }
 
     private FillerClip? LoadFiller()

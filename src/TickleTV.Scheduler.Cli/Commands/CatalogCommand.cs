@@ -7,8 +7,8 @@ public static class CatalogCommand
 {
     public static Option<FileInfo> DbOption() => new("--db")
     {
-        Description = "Catalog database file.",
-        DefaultValueFactory = _ => new FileInfo(Path.Combine(AppContext.BaseDirectory, "tickletv.sqlite")),
+        Description = "Catalog database file (default: the catalog named in tickletv.yaml, else the TickleTV data folder).",
+        DefaultValueFactory = _ => new FileInfo(ConfigLocator.DefaultCatalogPath()),
     };
 
     public static Command Create()

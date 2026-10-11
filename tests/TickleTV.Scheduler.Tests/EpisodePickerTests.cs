@@ -91,4 +91,31 @@ public class EpisodePickerTests : IDisposable
     {
         Assert.Null(new EpisodePicker(_db).Next("Nope", "1", OrderMode.Shuffle));
     }
+
+    [Fact]
+    public void Shuffle_never_plays_the_same_episode_back_to_back_across_cycles()
+    {
+        for (int i = 1; i <= 4; i++) AddEpisode("Short", 1, i, null);
+        for (int seed = 0; seed < 40; seed++)
+        {
+            using var db = CatalogDb.InMemory();
+            for (int i = 1; i <= 4; i++)
+            {
+                long id = db.Insert(new MediaItem
+                {
+                    ContentHash = $"s{seed}-{i}", Path = $"/tv/short/{i}.mkv", FileSize = 1, ModifiedUtc = DateTimeOffset.UnixEpoch,
+                    Kind = MediaKind.Episode, KindSource = FactSource.Filename, DurationMs = 1, ProbedUtc = DateTimeOffset.UnixEpoch,
+                });
+                db.UpsertEpisode(id, new EpisodeInfo { Show = "Short", Season = 1, Episode = i, Source = FactSource.Filename });
+            }
+            var picker = new EpisodePicker(db, seed);
+            long? previous = null;
+            for (int n = 0; n < 40; n++)
+            {
+                long id = picker.Next("Short", "1", OrderMode.Shuffle)!.Item.Id;
+                Assert.NotEqual(previous, id);
+                previous = id;
+            }
+        }
+    }
 }

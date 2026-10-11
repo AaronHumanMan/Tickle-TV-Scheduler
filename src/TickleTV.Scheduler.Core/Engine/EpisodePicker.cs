@@ -45,7 +45,7 @@ public sealed class EpisodePicker
         return pick;
     }
 
-    private sealed record Cycle(List<long> Remaining, List<long> Members);
+    private sealed record Cycle(List<long> Remaining, List<long> Members, long? Last = null);
 
     private static Cycle? ReadCycle(string? json)
     {
@@ -84,15 +84,22 @@ public sealed class EpisodePicker
             }
         }
 
+        long? last = state is { } st && st.Mode == nameof(OrderMode.Shuffle) ? ReadCycle(st.CycleJson)?.Last : null;
         if (remaining.Count == 0)
         {
             remaining = Shuffle(episodes.Select(e => e.Item.Id).ToList());
             members = remaining.ToList();
+            // A new cycle must not open with the episode that just closed the old one.
+            if (remaining.Count > 1 && remaining[0] == last)
+            {
+                int j = 1 + _random.Next(remaining.Count - 1);
+                (remaining[0], remaining[j]) = (remaining[j], remaining[0]);
+            }
         }
 
         long pickId = remaining[0];
         remaining.RemoveAt(0);
-        _db.SetRotation(show, channel, nameof(OrderMode.Shuffle), null, JsonSerializer.Serialize(new Cycle(remaining, members)));
+        _db.SetRotation(show, channel, nameof(OrderMode.Shuffle), null, JsonSerializer.Serialize(new Cycle(remaining, members, pickId)));
         return byId[pickId];
     }
 
