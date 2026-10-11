@@ -15,7 +15,7 @@ public sealed record ParsedName
     public int? Episode { get; init; }
     public DateOnly? AirDate { get; init; }
     public string? EpisodeTitle { get; init; }
-    /// <summary>Tags derived from the name and folders, such as brand:ross-perot, psa, unbranded, 1990s.</summary>
+    /// <summary>Tags derived from the name and folders, such as brand:ross-perot, category:cars, psa, unbranded, 1990s.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
@@ -25,9 +25,13 @@ public sealed record ParsedName
 /// </summary>
 public static partial class FilenameParser
 {
-    // "(480p_30fps_H264-128kbit_AAC)" and similar technical suffixes.
+    // "(480p_30fps_H264-128kbit_AAC)" and similar technical suffixes in brackets.
     [GeneratedRegex(@"\s*[\(\[][^\)\]]*(?:\d{3,4}p|x26[45]|h\.?26[45]|hevc|aac|ac3|web-?dl|bluray|hdtv|kbit)[^\)\]]*[\)\]]", RegexOptions.IgnoreCase)]
     private static partial Regex TechnicalParens();
+
+    // Scene-release tokens: everything from the first one to the end of the name is technical.
+    [GeneratedRegex(@"\b(?:480p|576p|720p|1080p|2160p|4k|hdtv|pdtv|web-?dl|web-?rip|webrip|web|bluray|blu-ray|bdrip|brrip|dvdrip|dvd|hdrip|x264|x265|h\.?264|h\.?265|hevc|avc|xvid|divx|aac(?:\d\.\d)?|ac3|dd5\.1|dts|flac(?:\s?\d\.\d)?|remux|proper|repack|internal|limited|uncut|multi|dubbed|subbed)\b.*$", RegexOptions.IgnoreCase)]
+    private static partial Regex SceneTail();
 
     // Trailing duplicate markers from file managers: "name (2)".
     [GeneratedRegex(@"\s*\(\d+\)\s*$")]
@@ -49,7 +53,7 @@ public static partial class FilenameParser
     [GeneratedRegex(@"\b(?<c>19|20)?(?<d>[0-9])0'?s\b", RegexOptions.IgnoreCase)]
     private static partial Regex Decade();
 
-    [GeneratedRegex(@"^(?:season|series)\s*\d+$|^s\d{1,2}$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?:season|series)\s*\d+$|^s\d{1,2}$|~\s*season\s*\d+$", RegexOptions.IgnoreCase)]
     private static partial Regex SeasonFolder();
 
     [GeneratedRegex(@"\b(commercials?|advert(?:isement)?s?|ads?|psa|promos?|spots?)\b", RegexOptions.IgnoreCase)]
@@ -71,8 +75,14 @@ public static partial class FilenameParser
     [GeneratedRegex(@"\bPSA\b")]
     private static partial Regex Psa();
 
-    [GeneratedRegex(@"\bpromo\b", RegexOptions.IgnoreCase)]
-    private static partial Regex Promo();
+    [GeneratedRegex(@"\bpromos?\b|\bpremieres?\b|\ball[\s-]new\b|\b(?:tonight|tomorrow|weekdays|weeknights|mornings?|nights?)\b|\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\b\d{1,2}(?:-\d{2})?[/-]\d{1,2}c\b|\bnext\s+(?:week|episode)\b|\bcoming\b|\bmarathon\b", RegexOptions.IgnoreCase)]
+    private static partial Regex PromoWords();
+
+    [GeneratedRegex(@"\bstation\s*id\b|\bidents?\b|\bID\b", RegexOptions.None)]
+    private static partial Regex StationIdWords();
+
+    [GeneratedRegex(@"\bbumpers?\b|\bwe.?ll\s+be\s+right\s+back\b|\bright\s+back\b|\bstay\s+tuned\b|\bnow\s+back\s+to\b|\bcoming\s+up\b|\bup\s+next\b", RegexOptions.IgnoreCase)]
+    private static partial Regex BreakBumperWords();
 
     [GeneratedRegex(@"\s*[-–]\s*")]
     private static partial Regex DashSeparator();
@@ -83,10 +93,17 @@ public static partial class FilenameParser
     [GeneratedRegex(@"[^a-z0-9]+")]
     private static partial Regex NonSlug();
 
+    [GeneratedRegex(@"^(?<y>(?:19|20)\d{2})\b")]
+    private static partial Regex LeadingYear();
+
     public static ParsedName Parse(string path)
     {
         string fileName = System.IO.Path.GetFileNameWithoutExtension(path);
-        string cleaned = DuplicateSuffix().Replace(TechnicalParens().Replace(fileName, ""), "").Trim();
+        bool scene = IsSceneName(fileName);
+        string cleaned = scene ? fileName.Replace('.', ' ') : fileName;
+        cleaned = DuplicateSuffix().Replace(TechnicalParens().Replace(cleaned, ""), "").Trim();
+        if (scene) cleaned = SceneTail().Replace(cleaned, "").Trim();
+
         IReadOnlyList<string> folders = Folders(path);
         var tags = new List<string>();
 
@@ -96,27 +113,24 @@ public static partial class FilenameParser
             airDate = d;
         string withoutDate = dateMatch.Success ? cleaned.Remove(dateMatch.Index, dateMatch.Length) : cleaned;
 
-        int? year = airDate?.Year ?? SingleYear(withoutDate);
+        // Year: the air date, else one year in the name, else a folder that starts with a year ("2003 Commercials").
+        int? year = airDate?.Year ?? SingleYear(withoutDate) ?? YearFromFolders(folders);
 
-        // A decade in the name or a folder ("90s") becomes a tag even when no exact year is known.
-        foreach (string text in new[] { withoutDate }.Concat(folders))
-        {
-            Match dm = Decade().Match(text);
-            if (dm.Success)
-            {
-                string century = dm.Groups["c"].Success ? dm.Groups["c"].Value : (int.Parse(dm.Groups["d"].Value) >= 3 ? "19" : "20");
-                tags.Add($"{century}{dm.Groups["d"].Value}0s");
-                break;
-            }
-        }
+        // Decade tag: from the year when known, else the nearest decade folder, else the name.
+        string? decade = year is { } yr ? $"{yr / 10 * 10}s" : DecadeFrom(folders) ?? DecadeFrom([withoutDate]);
+        if (decade is not null) tags.Add(decade);
 
+        // The folder directly under a decade folder is a category: "90s/Cars" gives category:cars.
+        if (CategoryFolder(folders) is { } category) tags.Add("category:" + category);
+
+        bool inBumperFolder = folders.Any(f => BumperWords().IsMatch(f));
         bool looksLikeCommercial = CommercialWords().IsMatch(withoutDate) || folders.Any(f => CommercialWords().IsMatch(f));
         Match se = SeasonEpisode().Match(withoutDate);
         if (!se.Success) se = SeasonXEpisode().Match(withoutDate);
 
         // "90s Commercials - S02.E61" is a numbered commercial, not an episode of a show.
-        if (se.Success && !looksLikeCommercial)
-            return ParseEpisode(withoutDate, se, folders, airDate, year, tags);
+        if (se.Success && !looksLikeCommercial && !inBumperFolder)
+            return ParseEpisode(withoutDate, se, folders, scene, airDate, year, tags);
 
         if (NotAnAdvert().IsMatch(withoutDate))
         {
@@ -129,11 +143,22 @@ public static partial class FilenameParser
         if (kind == MediaKind.Commercial)
         {
             if (Psa().IsMatch(withoutDate)) tags.Add("psa");
-            if (Promo().IsMatch(withoutDate)) tags.Add("promo");
+            if (PromoWords().IsMatch(withoutDate) && Regex.IsMatch(withoutDate, @"\bpromos?\b", RegexOptions.IgnoreCase)) tags.Add("promo");
             if (Unbranded().IsMatch(withoutDate))
                 tags.Add("unbranded");
             else if (Brand(withoutDate) is { } brand)
                 tags.Add("brand:" + brand);
+            if (Regex.IsMatch(withoutDate, @"\btrailer\b", RegexOptions.IgnoreCase) || folders.Any(f => f.Contains("trailer", StringComparison.OrdinalIgnoreCase)))
+                tags.Add("trailer");
+        }
+        else if (kind == MediaKind.Bumper)
+        {
+            // Network promos ("NYPD Blue all new Tuesday 10-9c") are not break bumpers; station IDs and
+            // "we'll be right back" cards are. Pools tell them apart by tag.
+            if (PromoWords().IsMatch(withoutDate)) tags.Add("promo");
+            if (StationIdWords().IsMatch(withoutDate)) tags.Add("station-id");
+            if (BreakBumperWords().IsMatch(withoutDate)) tags.Add("bumper");
+            if (Network(withoutDate) is { } network) tags.Add("network:" + network);
         }
 
         return new ParsedName
@@ -146,7 +171,7 @@ public static partial class FilenameParser
         };
     }
 
-    private static ParsedName ParseEpisode(string name, Match se, IReadOnlyList<string> folders, DateOnly? airDate, int? year, List<string> tags)
+    private static ParsedName ParseEpisode(string name, Match se, IReadOnlyList<string> folders, bool scene, DateOnly? airDate, int? year, List<string> tags)
     {
         int season = int.Parse(se.Groups["s"].Value, CultureInfo.InvariantCulture);
         int episode = int.Parse(se.Groups["e"].Value, CultureInfo.InvariantCulture);
@@ -154,10 +179,21 @@ public static partial class FilenameParser
         string before = name[..se.Index];
         string after = name[(se.Index + se.Length)..];
 
-        // Show is the last meaningful segment before SxxEyy: "257 - TNG" -> "TNG".
-        string? show = Segments(before).LastOrDefault(s => !IsNumeric(s));
-        string? showSource = show is null ? null : FactSource.Filename;
+        // Show: for scene names the folder is the clean source ("30.For.30" vs "30 for 30"); otherwise the last
+        // meaningful segment before SxxEyy ("257 - TNG" gives "TNG"), falling back to the folder.
+        string? show = null;
+        string? showSource = null;
+        if (scene && ShowFromFolders(folders) is { } folderShow)
+        {
+            show = folderShow;
+            showSource = FactSource.Folder;
+        }
         if (show is null)
+        {
+            show = Segments(before).LastOrDefault(s => !IsNumeric(s))?.Trim('.', ' ');
+            showSource = show is null ? null : FactSource.Filename;
+        }
+        if (string.IsNullOrEmpty(show))
         {
             show = ShowFromFolders(folders);
             showSource = show is null ? null : FactSource.Folder;
@@ -185,14 +221,16 @@ public static partial class FilenameParser
     {
         if (BumperWords().IsMatch(name)) return (MediaKind.Bumper, FactSource.Filename);
         if (FillerWords().IsMatch(name)) return (MediaKind.Filler, FactSource.Filename);
-        if (CommercialWords().IsMatch(name)) return (MediaKind.Commercial, FactSource.Filename);
 
+        // Nearest folder first: "90s/Bumpers and Promos" beats the "Commercials" root.
         foreach (string folder in folders)
         {
             if (BumperWords().IsMatch(folder)) return (MediaKind.Bumper, FactSource.Folder);
             if (FillerWords().IsMatch(folder)) return (MediaKind.Filler, FactSource.Folder);
             if (CommercialWords().IsMatch(folder)) return (MediaKind.Commercial, FactSource.Folder);
         }
+
+        if (CommercialWords().IsMatch(name)) return (MediaKind.Commercial, FactSource.Filename);
         return (MediaKind.Unknown, FactSource.Default);
     }
 
@@ -203,11 +241,23 @@ public static partial class FilenameParser
         if (parts.Length < 2) return null;
         string head = parts[0].Trim();
         if (head.Length == 0 || head.Length > 60 || IsNumeric(head)) return null;
-        // "Watch advert", "Night highway footage": generic descriptions are not brands.
         if (CommercialWords().IsMatch(head) || head.Contains("footage", StringComparison.OrdinalIgnoreCase)) return null;
-        string slug = NonSlug().Replace(head.ToLowerInvariant(), "-").Trim('-');
+        string slug = Slug(head);
         return slug.Length == 0 ? null : slug;
     }
+
+    /// <summary>"ABC - Street Hawk premieres Friday" gives network "abc"; "KMPH 26 - ..." gives "kmph-26".</summary>
+    private static string? Network(string name)
+    {
+        string[] parts = DashSeparator().Split(name, 2);
+        if (parts.Length < 2) return null;
+        string head = parts[0].Trim();
+        if (head.Length == 0 || head.Length > 40) return null;
+        string slug = Slug(head);
+        return slug.Length == 0 ? null : slug;
+    }
+
+    private static string Slug(string s) => NonSlug().Replace(s.ToLowerInvariant(), "-").Trim('-');
 
     /// <summary>One year in the name is a fact; several (a retrospective listing 1985, 1987, 1990) is noise.</summary>
     private static int? SingleYear(string name)
@@ -215,6 +265,46 @@ public static partial class FilenameParser
         var years = Year().Matches(name).Select(m => int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture)).Distinct().ToList();
         return years.Count == 1 ? years[0] : null;
     }
+
+    private static int? YearFromFolders(IReadOnlyList<string> folders)
+    {
+        foreach (string f in folders)
+        {
+            Match m = LeadingYear().Match(f.Trim());
+            if (m.Success) return int.Parse(m.Groups["y"].Value, CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    private static string? DecadeFrom(IEnumerable<string> texts)
+    {
+        foreach (string text in texts)
+        {
+            Match dm = Decade().Match(text);
+            if (!dm.Success) continue;
+            string century = dm.Groups["c"].Success ? dm.Groups["c"].Value : (int.Parse(dm.Groups["d"].Value) >= 3 ? "19" : "20");
+            return $"{century}{dm.Groups["d"].Value}0s";
+        }
+        return null;
+    }
+
+    /// <summary>The folder just below a decade folder, slugged: "Health Beauty Personal Care" gives "health-beauty-personal-care".</summary>
+    private static string? CategoryFolder(IReadOnlyList<string> folders)
+    {
+        for (int i = 0; i + 1 < folders.Count; i++)
+        {
+            if (Decade().IsMatch(folders[i + 1]) && !Decade().IsMatch(folders[i]))
+            {
+                string slug = Slug(folders[i]);
+                return slug.Length == 0 ? null : slug;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Scene releases have no spaces and dot separators: "Good.Eats.S10E03.1080p.WEB-DL".</summary>
+    private static bool IsSceneName(string fileName) =>
+        !fileName.Contains(' ') && fileName.Count(c => c == '.') >= 2;
 
     private static string? ShowFromFolders(IReadOnlyList<string> folders) =>
         folders.FirstOrDefault(f => !SeasonFolder().IsMatch(f.Trim()));

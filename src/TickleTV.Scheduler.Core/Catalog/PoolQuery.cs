@@ -4,8 +4,8 @@ using System.Text.RegularExpressions;
 namespace TickleTV.Scheduler.Core.Catalog;
 
 /// <summary>
-/// A small filter language for pools, evaluated against catalog entries. Terms are joined with AND;
-/// a term may be negated with NOT. Supported terms:
+/// A small filter language for pools, evaluated against catalog entries. Terms are joined with AND,
+/// groups of terms with OR (AND binds tighter), and a term may be negated with NOT. Supported terms:
 /// <list type="bullet">
 /// <item><c>kind = commercial</c></item>
 /// <item><c>tag:kids</c> or <c>tag = kids</c></item>
@@ -17,7 +17,7 @@ namespace TickleTV.Scheduler.Core.Catalog;
 /// </summary>
 public sealed partial class PoolQuery
 {
-    private readonly List<(bool negate, Func<CatalogEntry, QueryContext, bool> test)> _terms = [];
+    private readonly List<List<(bool negate, Func<CatalogEntry, QueryContext, bool> test)>> _alternatives = [];
     public string Source { get; }
 
     private PoolQuery(string source) => Source = source;
@@ -26,17 +26,22 @@ public sealed partial class PoolQuery
     {
         var q = new PoolQuery(text);
         string protectedText = BetweenAnd().Replace(text, "between ${a}..${b}");
-        foreach (string raw in SplitAnd().Split(protectedText))
+        foreach (string group in SplitOr().Split(protectedText))
         {
-            string term = raw.Trim();
-            if (term.Length == 0) continue;
-            bool negate = false;
-            if (term.StartsWith("NOT ", StringComparison.OrdinalIgnoreCase))
+            var terms = new List<(bool, Func<CatalogEntry, QueryContext, bool>)>();
+            foreach (string raw in SplitAnd().Split(group))
             {
-                negate = true;
-                term = term[4..].Trim();
+                string term = raw.Trim();
+                if (term.Length == 0) continue;
+                bool negate = false;
+                if (term.StartsWith("NOT ", StringComparison.OrdinalIgnoreCase))
+                {
+                    negate = true;
+                    term = term[4..].Trim();
+                }
+                terms.Add((negate, ParseTerm(term)));
             }
-            q._terms.Add((negate, ParseTerm(term)));
+            if (terms.Count > 0) q._alternatives.Add(terms);
         }
         return q;
     }
@@ -44,12 +49,18 @@ public sealed partial class PoolQuery
     public bool Matches(CatalogEntry entry, QueryContext? context = null)
     {
         QueryContext ctx = context ?? QueryContext.None;
-        foreach ((bool negate, var test) in _terms)
+        if (_alternatives.Count == 0) return true;
+        foreach (var terms in _alternatives)
         {
-            bool r = test(entry, ctx);
-            if (negate ? r : !r) return false;
+            bool all = true;
+            foreach ((bool negate, var test) in terms)
+            {
+                bool r = test(entry, ctx);
+                if (negate ? r : !r) { all = false; break; }
+            }
+            if (all) return true;
         }
-        return true;
+        return false;
     }
 
     public IEnumerable<CatalogEntry> Filter(IEnumerable<CatalogEntry> entries, QueryContext? context = null) =>
@@ -114,6 +125,9 @@ public sealed partial class PoolQuery
 
     [GeneratedRegex(@"\s+AND\s+", RegexOptions.IgnoreCase)]
     private static partial Regex SplitAnd();
+
+    [GeneratedRegex(@"\s+OR\s+", RegexOptions.IgnoreCase)]
+    private static partial Regex SplitOr();
 
     [GeneratedRegex(@"^tag\s*[:=]\s*(?<v>[^\s]+)$", RegexOptions.IgnoreCase)]
     private static partial Regex TagTerm();

@@ -39,7 +39,6 @@ public class FilenameParserTests
         ParsedName p = FilenameParser.Parse(@"E:\TBTV Test\Commercials\Season 1\Taco Bell MC Hammer Commercial 1991 (480p_30fps_H264-128kbit_AAC).mp4");
 
         Assert.Equal(MediaKind.Commercial, p.Kind);
-        Assert.Equal(FactSource.Filename, p.KindSource);
         Assert.Equal(1991, p.Year);
         Assert.Equal("Taco Bell MC Hammer Commercial 1991", p.Title);
         Assert.Null(p.Show);

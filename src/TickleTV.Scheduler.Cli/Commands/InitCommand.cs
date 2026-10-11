@@ -105,7 +105,7 @@ public static class InitCommand
               max_repeats_per_break: 1
 
             bumpers:
-              pool: kind = bumper
+              pool: kind = bumper AND NOT tag:promo
               before_break: true
               after_break: true
               min_ad_seconds: 15

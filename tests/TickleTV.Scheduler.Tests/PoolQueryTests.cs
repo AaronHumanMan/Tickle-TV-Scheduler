@@ -57,4 +57,14 @@ public class PoolQueryTests
         var ex = Assert.Throws<FormatException>(() => PoolQuery.Parse("colour = blue"));
         Assert.Contains("colour = blue", ex.Message);
     }
+
+    [Fact]
+    public void Or_joins_groups_and_binds_looser_than_and()
+    {
+        var q = PoolQuery.Parse("kind = commercial AND NOT tag:trailer OR kind = bumper AND tag:promo");
+        Assert.True(q.Matches(Entry(MediaKind.Commercial, 1991)));
+        Assert.False(q.Matches(Entry(MediaKind.Commercial, 1991, 30_000, null, "trailer")));
+        Assert.True(q.Matches(Entry(MediaKind.Bumper, 1991, 30_000, null, "promo")));
+        Assert.False(q.Matches(Entry(MediaKind.Bumper, 1991)));
+    }
 }

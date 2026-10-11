@@ -30,7 +30,7 @@ channels:
       max_repeats_per_break: 1
 
     bumpers:
-      pool: kind = bumper      # candidates; tag them break-out / break-in to split roles
+      pool: kind = bumper AND NOT tag:promo   # station IDs and break cards, not network promos
       before_break: true       # "we'll be right back", right before the ads
       after_break: true        # "now back to...", right after the ads
       # before_tag: break-out

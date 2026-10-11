@@ -213,7 +213,7 @@ public sealed class CatalogDb : IDisposable
         Query("SELECT show, season, episode, air_date, episode_title, source FROM episodes WHERE item_id = @id", ReadEpisode, ("@id", itemId)).FirstOrDefault();
 
     public IReadOnlyList<string> ListShows() =>
-        Query("SELECT DISTINCT show FROM episodes ORDER BY show", r => r.GetString(0));
+        Query("SELECT show FROM episodes GROUP BY show COLLATE NOCASE ORDER BY show COLLATE NOCASE", r => r.GetString(0));
 
     /// <summary>Episodes of a show in broadcast order: air date first, then season and episode, then path.</summary>
     public IReadOnlyList<CatalogEntry> EpisodesOf(string show)
