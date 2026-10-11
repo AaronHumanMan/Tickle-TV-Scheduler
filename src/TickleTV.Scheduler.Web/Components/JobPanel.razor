@@ -16,7 +16,7 @@
         {
             @if (job.Total > 0)
             {
-                <div class="bar"><div class="fill" style="width:@(job.Percent.ToString("0"))%"></div></div>
+                <div class="progress"><div class="fill" style="width:@(job.Percent.ToString("0"))%"></div></div>
                 <p>@job.Done of @job.Total files &middot; @job.Current</p>
             }
             else

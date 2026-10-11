@@ -28,14 +28,10 @@ a:hover { color: var(--cream); text-decoration: underline; }
 
 /* ---------- frame: top bar with an elbow into the sidebar ---------- */
 .lcars { min-height: 100vh; display: flex; flex-direction: column; padding: 14px 18px 24px 14px; }
-.lcars-top { display: flex; align-items: stretch; height: var(--bar-h); gap: 6px; }
+.lcars-top { display: flex; align-items: stretch; height: var(--bar-h); }
 .lcars-top .elbow { width: var(--sidebar-w); background: var(--orange); border-top-left-radius: 40px; }
-.lcars-top .bar { height: 100%; }
-.lcars-top .b1 { width: 70px; background: var(--peach); }
-.lcars-top .b2 { flex: 1; background: var(--lavender); }
-.lcars-top .b3 { width: 110px; background: var(--violet); }
-.lcars-top .cap { width: 36px; background: var(--orange); border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
-.lcars-top .brand { display: flex; align-items: center; padding: 0 14px; color: var(--orange); font-size: 1.6rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.lcars-top .brand { flex: 1; display: flex; align-items: center; justify-content: flex-end; padding: 0 18px; background: var(--orange); color: var(--black); font-size: 1.4rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.lcars-top .cap { width: 40px; margin-left: 6px; background: var(--orange); border-radius: 0 20px 20px 0; }
 
 .lcars-body { display: flex; flex: 1; min-height: 0; position: relative; }
 /* an orange patch under the top-left corner so the content's rounded corner reads as the inner curve of the elbow */
@@ -171,8 +167,8 @@ select option { background: #0d0d14; color: var(--cream); }
 .roots { list-style: none; padding: 0; margin: 0 0 12px; }
 .roots li { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 2px solid #15151f; }
 .roots .path { font-family: Consolas, monospace; font-size: 0.95rem; color: var(--cream); }
-.bar { height: 16px; background: var(--field); border-radius: 999px; overflow: hidden; margin: 8px 0; border: 2px solid var(--blue); }
-.bar .fill { height: 100%; background: var(--orange); transition: width 0.3s; }
+.progress { height: 16px; background: var(--field); border-radius: 999px; overflow: hidden; margin: 8px 0; border: 2px solid var(--blue); }
+.progress .fill { height: 100%; background: var(--orange); transition: width 0.3s; }
 .job .summary { font-size: 1.1rem; font-weight: 700; color: var(--cream); }
 .job .log { max-height: 260px; overflow: auto; font-size: 0.85rem; }
 .job .warnings { color: var(--orange); }
