@@ -4,13 +4,21 @@ using System.Text.Json.Serialization;
 namespace TickleTV.Scheduler.Core.Playout;
 
 /// <summary>
-/// C# model of ErsatzTV Next's playout JSON (schema version 0.0.6).
+/// C# model of ErsatzTV Next's playout JSON. Defaults to schema 0.0.5, the newest the released
+/// Next (0.2.0) accepts; an engine accepts any version at or below the one it supports, so older
+/// engines such as the one embedded in legacy ErsatzTV (0.0.4) need <see cref="VersionUri"/>.
 /// Field names follow the schema exactly once serialized with <see cref="PlayoutJson.Options"/>.
 /// See https://github.com/ErsatzTV/next/blob/main/schema/playout.json
 /// </summary>
 public sealed record Playout
 {
-    public const string SchemaVersion = "https://ersatztv.org/playout/version/0.0.6";
+    public const string VersionPrefix = "https://ersatztv.org/playout/version/";
+    public const string DefaultSchemaVersion = "0.0.5";
+    public const string SchemaVersion = VersionPrefix + DefaultSchemaVersion;
+
+    /// <summary>Builds the version URI for a short version such as <c>0.0.4</c>.</summary>
+    public static string VersionUri(string shortVersion) =>
+        shortVersion.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? shortVersion : VersionPrefix + shortVersion;
 
     public string Version { get; init; } = SchemaVersion;
     public required IReadOnlyList<PlayoutItem> Items { get; init; }

@@ -40,7 +40,9 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- spike ^
 
 Drop `--dry-run` to write the files. Next picks the playout up by file name for the current time, so the window starts at the next whole minute unless `--start` is given.
 
-Options: `--pad 30|60|5|10|none`, `--max-breaks N`, `--min-act SECONDS`, `--pre-roll`, `--no-post-roll`, `--title`.
+Options: `--pad 30|60|5|10|none`, `--max-breaks N`, `--min-act SECONDS`, `--pre-roll`, `--no-post-roll`, `--title`, `--schema-version 0.0.5`.
+
+Next rejects playout files newer than the schema it supports. Next 0.2.0 accepts up to 0.0.5 (the default here). The engine embedded in legacy ErsatzTV accepts 0.0.4, so pass `--schema-version 0.0.4` for it.
 
 ## Layout
 

@@ -35,9 +35,14 @@ public static class SpikeCommand
         var noPostRoll = new Option<bool>("--no-post-roll") { Description = "Skip the break after the show." };
         var dryRun = new Option<bool>("--dry-run") { Description = "Print the plan but write nothing." };
         var ffprobe = new Option<string?>("--ffprobe") { Description = "Path to ffprobe (default: channel.json or PATH)." };
+        var schema = new Option<string>("--schema-version")
+        {
+            Description = "Playout schema version the target engine accepts (0.0.5 for Next 0.2.0, 0.0.4 for legacy ErsatzTV's embedded engine).",
+            DefaultValueFactory = _ => Playout.DefaultSchemaVersion,
+        };
 
         var cmd = new Command("spike", "Write a one-episode playout window into a Next channel folder.");
-        foreach (Option o in new Option[] { file, channelDir, ads, xmltvDir, tvgId, title, start, pad, maxBreaks, minAct, preRoll, noPostRoll, dryRun, ffprobe })
+        foreach (Option o in new Option[] { file, channelDir, ads, xmltvDir, tvgId, title, start, pad, maxBreaks, minAct, preRoll, noPostRoll, dryRun, ffprobe, schema })
             cmd.Options.Add(o);
 
         cmd.SetAction(async (p, ct) =>
@@ -103,7 +108,8 @@ public static class SpikeCommand
             Directory.CreateDirectory(playoutFolder);
             DateTimeOffset finish = result.Playout.Items[^1].Finish;
             string playoutPath = Path.Combine(playoutFolder, PlayoutJson.FileName(startAt, finish));
-            await WriteAtomicAsync(playoutPath, PlayoutJson.Serialize(result.Playout), ct);
+            Playout playout = result.Playout with { Version = Playout.VersionUri(p.GetValue(schema)!) };
+            await WriteAtomicAsync(playoutPath, PlayoutJson.Serialize(playout), ct);
             Console.WriteLine($"\nWrote playout: {playoutPath}");
 
             if (xmltvFolder is not null)
