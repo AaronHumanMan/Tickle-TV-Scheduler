@@ -53,6 +53,8 @@ public sealed class ChannelBuilder
             .Concat(_db.ListItems(MediaKind.Unknown))
             .Select(i => _db.GetEntry(i.Id)!)
             .ToList();
+        BumperSet bumperSet = LoadBumpers();
+        List<CatalogEntry> bumperLibrary = _db.ListItems(MediaKind.Bumper).Select(i => _db.GetEntry(i.Id)!).ToList();
         var recentPlays = new Dictionary<long, DateTimeOffset>(); // this build's own airings
         TimeSpan cooldown = TimeSpan.FromMinutes(_channel.Ads.CooldownMinutes);
 
@@ -99,6 +101,7 @@ public sealed class ChannelBuilder
                 BreakPolicy = slot.BreakPolicy(_channel.Defaults),
                 PaddingPolicy = slot.PaddingPolicy(_channel.Defaults),
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
+                Bumpers = bumperSet,
             };
             SpikeResult built = SpikeBuilder.Build(request);
             warnings.AddRange(built.Warnings.Select(w => $"{cursor:ddd HH:mm} {slot.Show}: {w}"));
@@ -111,13 +114,13 @@ public sealed class ChannelBuilder
             {
                 string prefix = item.Id.Split('-')[0];
                 items.Add(item with { Id = $"{prefix}-{++idCounter}" });
-                if (item.Source is LocalSource local && prefix == "ad")
+                if (item.Source is LocalSource local && prefix is "ad" or "bumper")
                 {
-                    long? adId = adLibrary.FirstOrDefault(e => e.Item.Path == local.Path)?.Item.Id;
-                    if (adId is { } id)
+                    long? clipId = (prefix == "ad" ? adLibrary : bumperLibrary).FirstOrDefault(e => e.Item.Path == local.Path)?.Item.Id;
+                    if (clipId is { } id)
                     {
-                        plays.Add(new PlayRecord(id, item.Start, $"ad in {slot.Show}"));
-                        recentPlays[id] = item.Start;
+                        plays.Add(new PlayRecord(id, item.Start, $"{prefix} in {slot.Show}"));
+                        if (prefix == "ad") recentPlays[id] = item.Start;
                     }
                 }
             }
@@ -128,7 +131,7 @@ public sealed class ChannelBuilder
                 EpisodeNumber = episode.Episode is { Season: { } s, Episode: { } e } ? $"S{s:00}E{e:00}" : null,
             });
 
-            _log?.Invoke($"{cursor:ddd HH:mm}-{slotEnd:HH:mm}  {GuideTitle(episode)}  ({built.Acts.Count} acts, {built.Playout.Items.Count(i => i.Id.StartsWith("ad-"))} ads, pad {built.PadMs / 1000}s)");
+            _log?.Invoke($"{cursor:ddd HH:mm}-{slotEnd:HH:mm}  {GuideTitle(episode)}  ({built.Acts.Count} acts, {built.Playout.Items.Count(i => i.Id.StartsWith("ad-"))} ads, {built.Playout.Items.Count(i => i.Id.StartsWith("bumper-"))} bumpers, pad {built.PadMs / 1000}s)");
             cursor = slotEnd;
         }
 
@@ -141,6 +144,28 @@ public sealed class ChannelBuilder
             Programmes = programmes,
             Plays = plays,
             Warnings = warnings,
+        };
+    }
+
+    private BumperSet LoadBumpers()
+    {
+        BumpersConfig cfg = _channel.Bumpers;
+        if (string.IsNullOrWhiteSpace(cfg.Pool) || (!cfg.BeforeBreak && !cfg.AfterBreak)) return new BumperSet();
+
+        PoolQuery pool = PoolQuery.Parse(cfg.Pool);
+        List<CatalogEntry> all = pool.Filter(_db.ListItems(MediaKind.Bumper).Select(i => _db.GetEntry(i.Id)!)).ToList();
+        if (all.Count == 0) return new BumperSet();
+
+        List<FillerClip> Pick(bool enabled, string? tag) => !enabled ? [] : all
+            .Where(e => tag is null || e.Tags.Any(t => t.Name == CatalogDb.NormalizeTag(tag)))
+            .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
+            .ToList();
+
+        return new BumperSet
+        {
+            Before = Pick(cfg.BeforeBreak, cfg.BeforeTag),
+            After = Pick(cfg.AfterBreak, cfg.AfterTag),
+            MinAdMs = cfg.MinAdSeconds * 1000L,
         };
     }
 

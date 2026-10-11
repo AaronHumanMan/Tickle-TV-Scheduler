@@ -78,7 +78,24 @@ public sealed class ChannelConfig
     public int HorizonHours { get; set; } = 24;
     public SlotDefaults Defaults { get; set; } = new();
     public AdsConfig Ads { get; set; } = new();
+    public BumpersConfig Bumpers { get; set; } = new();
     public List<SlotConfig> Schedule { get; set; } = [];
+}
+
+public sealed class BumpersConfig
+{
+    /// <summary>Pool query for bumper candidates. Empty or no matches means no bumpers.</summary>
+    public string Pool { get; set; } = "kind = bumper";
+    /// <summary>Play a bumper right before the ads in each break ("we'll be right back").</summary>
+    public bool BeforeBreak { get; set; } = true;
+    /// <summary>Play a bumper right after the ads, before the show resumes ("now back to...").</summary>
+    public bool AfterBreak { get; set; } = true;
+    /// <summary>Optional tag that narrows the before-break pick, such as break-out.</summary>
+    public string? BeforeTag { get; set; }
+    /// <summary>Optional tag that narrows the after-break pick, such as break-in.</summary>
+    public string? AfterTag { get; set; }
+    /// <summary>Leave at least this many seconds of ads in a break; bumpers are skipped when they would crowd ads out.</summary>
+    public int MinAdSeconds { get; set; } = 15;
 }
 
 public sealed class SlotDefaults
@@ -90,6 +107,8 @@ public sealed class SlotDefaults
     public bool PreRoll { get; set; } = false;
     public bool PostRoll { get; set; } = true;
     public int FallbackBreaks { get; set; } = 2;
+    /// <summary>Always break after a short first chapter (cold open or teaser), the classic TV pattern.</summary>
+    public bool ColdOpenBreak { get; set; } = true;
 
     [YamlIgnore]
     public PaddingMode PaddingMode => ParsePad(Pad);
@@ -147,6 +166,7 @@ public sealed class SlotConfig
         PreRoll = PreRoll ?? d.PreRoll,
         PostRoll = PostRoll ?? d.PostRoll,
         FallbackBreaks = d.FallbackBreaks,
+        ColdOpenBreak = d.ColdOpenBreak,
     };
 
     public PaddingPolicy PaddingPolicy(SlotDefaults d) => new()

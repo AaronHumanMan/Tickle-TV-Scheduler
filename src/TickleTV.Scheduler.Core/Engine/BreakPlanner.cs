@@ -12,6 +12,13 @@ public sealed record BreakPolicy
     public bool PostRoll { get; init; } = true;
     /// <summary>When there are no usable chapters, split evenly into this many breaks (0 = none).</summary>
     public int FallbackBreaks { get; init; } = 0;
+    /// <summary>
+    /// A first chapter between <see cref="ColdOpenMinMs"/> and <see cref="ColdOpenMaxMs"/> long is a cold open
+    /// or teaser; real TV always breaks right after it. When true, that cut is kept ahead of even spacing.
+    /// </summary>
+    public bool ColdOpenBreak { get; init; } = true;
+    public long ColdOpenMinMs { get; init; } = 60_000;
+    public long ColdOpenMaxMs { get; init; } = 8 * 60_000;
 }
 
 /// <summary>A contiguous slice of the source file that airs between breaks.</summary>
@@ -40,7 +47,12 @@ public static class BreakPlanner
                 .Distinct()
                 .OrderBy(ms => ms)
                 .ToList();
-            cuts = ChooseEvenly(cuts, policy.MaxMidBreaks, durationMs);
+            long? coldOpen = policy.ColdOpenBreak && chapters.Count > 1
+                && chapters[1].StartMs >= Math.Max(policy.ColdOpenMinMs, policy.MinActMs)
+                && chapters[1].StartMs <= policy.ColdOpenMaxMs
+                && chapters[1].StartMs <= durationMs - policy.MinActMs
+                ? chapters[1].StartMs : null;
+            cuts = ChooseEvenly(cuts, policy.MaxMidBreaks, durationMs, coldOpen);
             cuts = EnforceMinAct(cuts, policy.MinActMs);
         }
         else if (policy.FallbackBreaks > 0)
@@ -62,16 +74,27 @@ public static class BreakPlanner
         return acts;
     }
 
-    /// <summary>Keep at most <paramref name="max"/> cuts, each the candidate nearest to an evenly spaced target.</summary>
-    private static List<long> ChooseEvenly(List<long> candidates, int max, long durationMs)
+    /// <summary>
+    /// Keep at most <paramref name="max"/> cuts. A forced cut (the cold open) is kept first; the rest are the
+    /// candidates nearest to targets spaced evenly across what remains after it.
+    /// </summary>
+    private static List<long> ChooseEvenly(List<long> candidates, int max, long durationMs, long? forced = null)
     {
         if (max <= 0) return [];
         if (candidates.Count <= max) return candidates;
 
         var chosen = new SortedSet<long>();
-        for (int i = 1; i <= max; i++)
+        long spanStart = 0;
+        int remaining = max;
+        if (forced is { } f && candidates.Contains(f))
         {
-            long target = durationMs * i / (max + 1);
+            chosen.Add(f);
+            spanStart = f;
+            remaining--;
+        }
+        for (int i = 1; i <= remaining; i++)
+        {
+            long target = spanStart + (durationMs - spanStart) * i / (remaining + 1);
             long? best = candidates
                 .Where(c => !chosen.Contains(c))
                 .OrderBy(c => Math.Abs(c - target))

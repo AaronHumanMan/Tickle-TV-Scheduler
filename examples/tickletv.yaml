@@ -20,6 +20,7 @@ channels:
       min_act_seconds: 120
       pre_roll: false
       post_roll: true
+      cold_open_break: true  # always break after a short first chapter (teaser), like real TV
 
     ads:
       # Pool query. Terms join with AND; prefix a term with NOT to exclude.
@@ -27,6 +28,14 @@ channels:
       pool: kind = commercial AND era within 6
       cooldown_minutes: 90
       max_repeats_per_break: 1
+
+    bumpers:
+      pool: kind = bumper      # candidates; tag them break-out / break-in to split roles
+      before_break: true       # "we'll be right back", right before the ads
+      after_break: true        # "now back to...", right after the ads
+      # before_tag: break-out
+      # after_tag: break-in
+      min_ad_seconds: 15       # skip bumpers when a break is too short for them plus ads
 
     # Daily grid. Each slot airs episodes of its show back to back until the next slot starts.
     schedule:

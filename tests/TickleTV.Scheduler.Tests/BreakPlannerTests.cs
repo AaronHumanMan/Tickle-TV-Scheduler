@@ -51,7 +51,7 @@ public class BreakPlannerTests
     {
         long duration = 60 * Min;
         var chapters = Chapters(0, 5 * Min, 12 * Min, 20 * Min, 29 * Min, 38 * Min, 46 * Min, 55 * Min);
-        var acts = BreakPlanner.PlanActs(duration, chapters, new BreakPolicy { MaxMidBreaks = 3, MinActMs = 2 * Min });
+        var acts = BreakPlanner.PlanActs(duration, chapters, new BreakPolicy { MaxMidBreaks = 3, MinActMs = 2 * Min, ColdOpenBreak = false });
 
         Assert.Equal(4, acts.Count);
         // Targets at 15, 30, 45 min: nearest candidates are 12, 29, 46.

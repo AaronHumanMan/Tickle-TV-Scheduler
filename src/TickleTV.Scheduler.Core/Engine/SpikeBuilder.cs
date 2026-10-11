@@ -7,6 +7,15 @@ namespace TickleTV.Scheduler.Core.Engine;
 /// <summary>A short clip (ad, bumper, filler) available to fill breaks.</summary>
 public sealed record FillerClip(string Path, long DurationMs);
 
+/// <summary>Bumpers that bracket a break: one before the ads, one after. Either list may be empty.</summary>
+public sealed record BumperSet
+{
+    public IReadOnlyList<FillerClip> Before { get; init; } = [];
+    public IReadOnlyList<FillerClip> After { get; init; } = [];
+    /// <summary>Bumpers are skipped when they would leave less than this for ads.</summary>
+    public long MinAdMs { get; init; } = 15_000;
+}
+
 public sealed record SpikeRequest
 {
     public required MediaProbe Episode { get; init; }
@@ -16,6 +25,7 @@ public sealed record SpikeRequest
     public BreakPolicy BreakPolicy { get; init; } = new();
     public PaddingPolicy PaddingPolicy { get; init; } = new();
     public int MaxRepeatsPerBreak { get; init; } = 2;
+    public BumperSet Bumpers { get; init; } = new();
 }
 
 public sealed record SpikeResult
@@ -59,9 +69,10 @@ public static class SpikeBuilder
         var cursor = req.Start;
         int breakIndex = 0;
         var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak) };
+        var bumpers = new BumperRotation(req.Bumpers);
 
         if (req.BreakPolicy.PreRoll)
-            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, warnings);
+            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, warnings);
 
         for (int i = 0; i < acts.Count; i++)
         {
@@ -84,7 +95,7 @@ public static class SpikeBuilder
             if (!isLast || req.BreakPolicy.PostRoll || (breakCount == 1 && midBreaks == 0 && !req.BreakPolicy.PreRoll))
             {
                 if (breakIndex < budgets.Length)
-                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, warnings);
+                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, warnings);
             }
         }
 
@@ -139,21 +150,28 @@ public static class SpikeBuilder
     }
 
     private static DateTimeOffset EmitBreak(
-        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, List<string> warnings)
+        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, BumperRotation bumpers, List<string> warnings)
     {
         if (budgetMs <= 0) return cursor;
         int n = items.Count(i => i.Id.StartsWith("ad-")) + 1;
+        int b = items.Count(i => i.Id.StartsWith("bumper-")) + 1;
 
-        FillResult fill = filler.Fill(budgetMs);
+        // Bumpers first: reserve them only when enough remains for ads.
+        FillerClip? before = bumpers.NextBefore(budgetMs);
+        long afterBefore = budgetMs - (before?.DurationMs ?? 0);
+        FillerClip? after = bumpers.NextAfter(afterBefore);
+        long adBudget = afterBefore - (after?.DurationMs ?? 0);
+
+        if (before is not null)
+        {
+            items.Add(Clip($"bumper-{b++}", cursor, before));
+            cursor = cursor.AddMilliseconds(before.DurationMs);
+        }
+
+        FillResult fill = filler.Fill(adBudget);
         foreach (FillerClip clip in fill.Clips)
         {
-            items.Add(new PlayoutItem
-            {
-                Id = $"ad-{n++}",
-                Start = cursor,
-                Finish = cursor.AddMilliseconds(clip.DurationMs),
-                Source = new LocalSource { Path = clip.Path },
-            });
+            items.Add(Clip($"ad-{n++}", cursor, clip));
             cursor = cursor.AddMilliseconds(clip.DurationMs);
         }
 
@@ -164,7 +182,42 @@ public static class SpikeBuilder
             items.Add(Slate($"slate-{items.Count}", cursor, fill.RemainderMs));
             cursor = cursor.AddMilliseconds(fill.RemainderMs);
         }
+
+        if (after is not null)
+        {
+            items.Add(Clip($"bumper-{b++}", cursor, after));
+            cursor = cursor.AddMilliseconds(after.DurationMs);
+        }
         return cursor;
+    }
+
+    private static PlayoutItem Clip(string id, DateTimeOffset start, FillerClip clip) => new()
+    {
+        Id = id,
+        Start = start,
+        Finish = start.AddMilliseconds(clip.DurationMs),
+        Source = new LocalSource { Path = clip.Path },
+    };
+
+    /// <summary>Round-robin over each bumper list so the same bumper is not seen every break.</summary>
+    private sealed class BumperRotation(BumperSet set)
+    {
+        private int _before, _after;
+
+        public FillerClip? NextBefore(long budgetMs) => Pick(set.Before, ref _before, budgetMs);
+        public FillerClip? NextAfter(long budgetMs) => Pick(set.After, ref _after, budgetMs);
+
+        private FillerClip? Pick(IReadOnlyList<FillerClip> list, ref int index, long budgetMs)
+        {
+            if (list.Count == 0) return null;
+            for (int tries = 0; tries < list.Count; tries++)
+            {
+                FillerClip candidate = list[index % list.Count];
+                index++;
+                if (budgetMs - candidate.DurationMs >= set.MinAdMs) return candidate;
+            }
+            return null;
+        }
     }
 
     /// <summary>Black video with silent audio, generated by ffmpeg's lavfi, for the last seconds of a break.</summary>
