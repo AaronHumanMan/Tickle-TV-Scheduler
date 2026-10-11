@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TickleTV.Scheduler.Core\TickleTV.Scheduler.Core.csproj" />
+    <ProjectReference Include="..\..\src\TickleTV.Scheduler.Cli\TickleTV.Scheduler.Cli.csproj" />
   </ItemGroup>
 
 </Project>

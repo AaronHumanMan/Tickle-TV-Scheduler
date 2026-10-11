@@ -15,6 +15,12 @@ public sealed class BreakFiller
     /// <summary>Extra cost for using a clip a second time in the same break, so variety wins when budgets tie.</summary>
     public int RepeatPenalty { get; init; } = 10;
 
+    /// <summary>
+    /// A slate shorter than this makes ffmpeg fail (Next logged exit code -22 on a 256 ms slate), so a fill
+    /// leaves either nothing or at least this much. When the leftover would be smaller, the shortest pick is dropped.
+    /// </summary>
+    public long MinSlateMs { get; init; } = 2_000;
+
     private readonly IReadOnlyList<FillerClip> _clips;
     private readonly Dictionary<string, int> _plays = new();
 
@@ -86,11 +92,21 @@ public sealed class BreakFiller
             }
         }
 
-        int best = units;
-        while (best > 0 && !reachable[n, best]) best--;
+        for (int target = units; target >= 0; target--)
+        {
+            if (!reachable[n, target]) continue;
+            List<FillerClip> picks = Reconstruct(items, take, n, target);
+            long leftover = budgetMs - picks.Sum(c => c.DurationMs);
+            if (leftover == 0 || leftover >= MinSlateMs) return picks;
+            // A sliver of slate would make ffmpeg fail; try the next fuller-but-roomier target.
+        }
+        return [];
+    }
 
+    private static List<FillerClip> Reconstruct(List<(FillerClip clip, int size, long cost)> items, bool[,] take, int n, int target)
+    {
         var picks = new List<FillerClip>();
-        for (int i = n, u = best; i > 0 && u > 0; i--)
+        for (int i = n, u = target; i > 0 && u > 0; i--)
         {
             if (!take[i, u]) continue;
             picks.Add(items[i - 1].clip);

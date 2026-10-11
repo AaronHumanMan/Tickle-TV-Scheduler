@@ -96,3 +96,17 @@ public class PlayoutJsonTests
             PlayoutJson.FileName(start, finish));
     }
 }
+
+public class CompactTimestampTests
+{
+    [Fact]
+    public void File_name_timestamps_round_trip()
+    {
+        var finish = new DateTimeOffset(2026, 10, 10, 23, 40, 0, TimeSpan.FromHours(-5));
+        string name = TickleTV.Scheduler.Core.Playout.PlayoutJson.FileName(finish.AddHours(-1), finish);
+        string finishPart = name[(name.IndexOf('_') + 1)..^5];
+
+        Assert.True(TickleTV.Scheduler.Cli.Commands.BuildCommand.TryParseCompact(finishPart, out DateTimeOffset parsed));
+        Assert.Equal(finish, parsed);
+    }
+}

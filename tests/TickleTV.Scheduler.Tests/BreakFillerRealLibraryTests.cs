@@ -15,12 +15,12 @@ public class BreakFillerRealLibraryTests
         RealDurationsMs.Select((d, i) => new FillerClip($"/ads/clip{i}.mp4", d)).ToList();
 
     [Fact]
-    public void A_217s_break_is_filled_to_within_two_seconds()
+    public void A_217s_break_is_filled_exactly_or_with_a_playable_slate()
     {
         var filler = new BreakFiller(Library());
         FillResult r = filler.Fill(217_060);
 
-        Assert.True(r.RemainderMs < 2_000, $"left {r.RemainderMs} ms");
+        Assert.True(r.RemainderMs == 0 || (r.RemainderMs >= 2_000 && r.RemainderMs < 4_000), $"left {r.RemainderMs} ms");
         Assert.True(r.Clips.Sum(c => c.DurationMs) <= 217_060);
     }
 
@@ -31,7 +31,7 @@ public class BreakFillerRealLibraryTests
         for (int i = 0; i < 4; i++)
         {
             FillResult r = filler.Fill(217_060);
-            Assert.True(r.RemainderMs < 2_000, $"break {i + 1} left {r.RemainderMs} ms");
+            Assert.True(r.RemainderMs == 0 || (r.RemainderMs >= 2_000 && r.RemainderMs < 4_000), $"break {i + 1} left {r.RemainderMs} ms");
             Assert.True(r.Clips.Sum(c => c.DurationMs) <= 217_060);
         }
     }

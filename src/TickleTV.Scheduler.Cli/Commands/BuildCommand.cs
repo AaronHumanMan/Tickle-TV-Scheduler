@@ -148,12 +148,17 @@ public static class BuildCommand
         }
     }
 
-    private static bool TryParseCompact(string s, out DateTimeOffset value)
+    /// <summary>Parses Next's compact file-name timestamp, e.g. <c>20261010T234000.000000000-0500</c>.</summary>
+    public static bool TryParseCompact(string s, out DateTimeOffset value)
     {
-        // 20261010T224700.000000000-0500 -> trim to 7 fraction digits for .NET
-        string trimmed = s.Length > 24 ? s[..24] + s[26..] : s;
-        return DateTimeOffset.TryParseExact(trimmed, "yyyyMMdd'T'HHmmss.fffffffzzz", CultureInfo.InvariantCulture, DateTimeStyles.None, out value)
-            || DateTimeOffset.TryParseExact(s, "yyyyMMdd'T'HHmmss.fffffffzzz", CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
+        value = default;
+        // Layout: 15 chars date-time, '.', 9 fraction digits, then +HHmm or -HHmm.
+        if (s.Length != 30 || s[15] != '.' || (s[25] != '+' && s[25] != '-')) return false;
+        if (!DateTime.TryParseExact(s[..23], "yyyyMMdd'T'HHmmss.fffffff", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime local)) return false;
+        if (!int.TryParse(s.AsSpan(26, 2), out int oh) || !int.TryParse(s.AsSpan(28, 2), out int om)) return false;
+        TimeSpan offset = new TimeSpan(oh, om, 0) * (s[25] == '-' ? -1 : 1);
+        value = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset);
+        return true;
     }
 
     /// <summary>Keeps programmes that ended before the new window and appends the new ones.</summary>

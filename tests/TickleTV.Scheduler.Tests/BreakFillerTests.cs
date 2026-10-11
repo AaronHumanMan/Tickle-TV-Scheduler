@@ -69,4 +69,15 @@ public class BreakFillerTests
         Assert.True(r.Clips.Sum(c => c.DurationMs) <= 30_100);
         Assert.Equal(2, r.Clips.Count);
     }
+
+    [Fact]
+    public void Never_leaves_a_slate_shorter_than_two_seconds()
+    {
+        // 30 + 15 + 10 = 55 s against a 55.3 s budget would leave a 300 ms slate, which ffmpeg rejects.
+        var filler = new BreakFiller([A30, B15, C10]) { MaxRepeatsPerBreak = 1 };
+        FillResult r = filler.Fill(55_300);
+
+        Assert.True(r.RemainderMs == 0 || r.RemainderMs >= 2_000, $"left {r.RemainderMs} ms");
+        Assert.True(r.RemainderMs <= 15_300, $"gave up too much: left {r.RemainderMs} ms");
+    }
 }
