@@ -115,6 +115,11 @@ public static class InitCommand
             filler:
               pool: kind = filler
 
+            gap:
+              hold_grid: true        # start every slot on time; short leftovers become station breaks
+              pool: kind = bumper AND tag:promo OR kind = commercial
+              max_minutes: 12
+
             # Daily grid: each slot airs its show back to back until the next slot starts.
             # Show names come from 'catalog shows'. order: chronological | shuffle
             schedule:

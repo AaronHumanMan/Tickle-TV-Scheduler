@@ -20,6 +20,23 @@ public sealed class EpisodePicker
         _random = seed is null ? Random.Shared : new Random(seed.Value);
     }
 
+    /// <summary>The length of the episode <see cref="Next"/> would return, or null when there are no episodes.</summary>
+    public long? PeekDuration(string show, string channel)
+    {
+        IReadOnlyList<CatalogEntry> episodes = _db.EpisodesOf(show);
+        if (episodes.Count == 0) return null;
+        var state = _db.GetRotation(show, channel);
+        if (state is { } s)
+        {
+            if (s.Mode == nameof(OrderMode.Chronological) && s.NextPosition is { } p)
+                return episodes[p < episodes.Count ? p : 0].Item.DurationMs;
+            if (s.Mode == nameof(OrderMode.Shuffle) && ReadCycle(s.CycleJson) is { } cycle && cycle.Remaining.Count > 0)
+                return episodes.FirstOrDefault(e => e.Item.Id == cycle.Remaining[0])?.Item.DurationMs;
+        }
+        // Order not decided yet (first pick, or a fresh shuffle cycle): assume a typical episode.
+        return (long)episodes.Average(e => (double)e.Item.DurationMs);
+    }
+
     public CatalogEntry? Next(string show, string channel, OrderMode mode)
     {
         IReadOnlyList<CatalogEntry> episodes = _db.EpisodesOf(show);

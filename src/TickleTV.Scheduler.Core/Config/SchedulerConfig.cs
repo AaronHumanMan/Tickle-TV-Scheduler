@@ -80,7 +80,21 @@ public sealed class ChannelConfig
     public AdsConfig Ads { get; set; } = new();
     public BumpersConfig Bumpers { get; set; } = new();
     public FillerConfig Filler { get; set; } = new();
+    public GapConfig Gap { get; set; } = new();
     public List<SlotConfig> Schedule { get; set; } = [];
+}
+
+/// <summary>
+/// Holding the grid: when the next episode cannot finish before the following slot starts, the time until that
+/// slot is filled from this pool so the slot starts on time. Longer gaps air the episode anyway and drift.
+/// </summary>
+public sealed class GapConfig
+{
+    public bool HoldGrid { get; set; } = true;
+    /// <summary>Clips that fill a station break. Default: network promos and commercials.</summary>
+    public string Pool { get; set; } = "kind = bumper AND tag:promo OR kind = commercial";
+    /// <summary>The longest gap worth filling instead of airing one more episode.</summary>
+    public int MaxMinutes { get; set; } = 12;
 }
 
 public sealed class FillerConfig

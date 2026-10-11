@@ -97,6 +97,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 - `bumpers` brackets each break with a clip before the ads and one after, drawn from a pool, rotating so the same bumper isn't seen every break. Bumpers carry `station-id`, `break-card`, or `promo` tags; use `before_tag` / `after_tag` to pick which plays where.
 - `filler` names a clip that covers whatever ads and bumpers cannot fill exactly, playing from its start and looping as needed. Without one, gaps are black video with silence. Any file with Filler, Fallback, or Slate in its name is a filler.
 - An episode with no usable chapter marks gets no mid-show breaks; it runs straight through and is padded at the end to the next 5 minutes (`no_chapter_pad`). Set `fallback_breaks` above 0 to space breaks evenly instead.
+- `gap.hold_grid` keeps every slot starting on time. When the next episode can't finish before the following slot, the leftover (up to `max_minutes`) becomes a station break of promos and commercials from `gap.pool`; an episode that fits is padded only up to the slot start.
 - `cold_open_break` keeps the cut right after a short first chapter (a teaser or cold open), the way real TV breaks.
 - `parse <folder>` shows how files would be classified without probing or writing anything.
 

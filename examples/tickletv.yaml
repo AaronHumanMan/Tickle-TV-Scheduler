@@ -42,6 +42,11 @@ channels:
     filler:
       pool: kind = filler      # covers whatever ads can't fill, looping; without it gaps are black
 
+    gap:
+      hold_grid: true          # start every slot on time; short leftover stretches become station breaks
+      pool: kind = bumper AND tag:promo OR kind = commercial
+      max_minutes: 12          # longer gaps air one more episode instead and drift
+
     # Daily grid. Each slot airs episodes of its show back to back until the next slot starts.
     schedule:
       - time: "06:00"

@@ -68,6 +68,9 @@ public sealed class ChannelBuilder
             .Select(i => _db.GetEntry(i.Id)!)
             .ToList();
         BumperSet bumperSet = LoadBumpers();
+        List<CatalogEntry> gapLibrary = _channel.Gap.HoldGrid
+            ? PoolQuery.Parse(_channel.Gap.Pool).Filter(_db.ListItems(MediaKind.Commercial).Concat(_db.ListItems(MediaKind.Bumper)).Select(i => _db.GetEntry(i.Id)!)).ToList()
+            : [];
         FillerClip? gapFiller = LoadFiller();
         if (gapFiller is null) warnings.Add("No filler clip matched the filler pool; gaps will be black slate.");
         List<CatalogEntry> bumperLibrary = _db.ListItems(MediaKind.Bumper).Select(i => _db.GetEntry(i.Id)!).ToList();
@@ -81,6 +84,16 @@ public sealed class ChannelBuilder
         while (cursor < until)
         {
             (SlotConfig slot, DateTimeOffset nextSlotStart) = ActiveSlot(slots, cursor);
+
+            // Hold the grid: a short stretch before the next slot that no episode fits into becomes a station break.
+            long untilNextMs = (long)(nextSlotStart - cursor).TotalMilliseconds;
+            if (_channel.Gap.HoldGrid && untilNextMs > 0 && untilNextMs <= _channel.Gap.MaxMinutes * 60_000L
+                && !NextEpisodeFits(slot.Show, untilNextMs))
+            {
+                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapLibrary, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Show);
+                continue;
+            }
+
             CatalogEntry? episode = ReusePrior(slot.Show) ?? _picker.Next(slot.Show, _channel.Number, slot.OrderMode);
 
             if (episode is null)
@@ -119,6 +132,15 @@ public sealed class ChannelBuilder
                 paddingPolicy = paddingPolicy with { Mode = _channel.Defaults.NoChapterPaddingMode };
             }
 
+            // Hold the grid: never pad past the next slot's start when the content itself fits before it.
+            DateTimeOffset? slotEndOverride = null;
+            if (_channel.Gap.HoldGrid && nextSlotStart > cursor)
+            {
+                DateTimeOffset natural = Padding.SlotEnd(cursor, probe.DurationMs, paddingPolicy);
+                if (natural > nextSlotStart && cursor.AddMilliseconds(probe.DurationMs) <= nextSlotStart)
+                    slotEndOverride = nextSlotStart;
+            }
+
             var request = new SpikeRequest
             {
                 Episode = probe,
@@ -127,6 +149,7 @@ public sealed class ChannelBuilder
                 Ads = ads,
                 BreakPolicy = breakPolicy,
                 PaddingPolicy = paddingPolicy,
+                SlotEnd = slotEndOverride,
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
                 Bumpers = bumperSet,
                 Filler = gapFiller,
@@ -173,6 +196,58 @@ public sealed class ChannelBuilder
             Plays = plays,
             Warnings = warnings,
         };
+    }
+
+    /// <summary>Would the show's next episode (without consuming it) finish before the next slot starts?</summary>
+    private bool NextEpisodeFits(string show, long untilNextMs)
+    {
+        long? duration = PeekPriorDuration(show) ?? _picker.PeekDuration(show, _channel.Number);
+        return duration is null || duration.Value <= untilNextMs;
+    }
+
+    private long? PeekPriorDuration(string show)
+    {
+        var match = PriorAssignments.FirstOrDefault(kv => string.Equals(kv.Key, show, StringComparison.OrdinalIgnoreCase));
+        if (match.Value is null || match.Value.Count == 0) return null;
+        return _db.FindById(match.Value.Peek())?.DurationMs;
+    }
+
+    private DateTimeOffset EmitStationBreak(
+        List<PlayoutItem> items, List<GuideProgramme> programmes, List<PlayRecord> plays, List<string> warnings,
+        DateTimeOffset start, long durationMs, List<CatalogEntry> gapLibrary, BumperSet bumpers, FillerClip? filler,
+        Dictionary<long, DateTimeOffset> recentPlays, TimeSpan cooldown, ref int idCounter, string nextShow)
+    {
+        var clips = gapLibrary
+            .Where(e => !OnCooldown(e.Item.Id, start, cooldown, recentPlays))
+            .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
+            .ToList();
+        (var gapItems, var gapWarnings) = SpikeBuilder.FillGap(start, durationMs, clips, bumpers, filler, _channel.Ads.MaxRepeatsPerBreak);
+        warnings.AddRange(gapWarnings.Select(w => $"{start:ddd HH:mm} station break: {w}"));
+
+        foreach (PlayoutItem item in gapItems)
+        {
+            string prefix = item.Id.Split('-')[0];
+            items.Add(item with { Id = $"{prefix}-{++idCounter}" });
+            if (item.Source is LocalSource local && prefix is "ad" or "bumper")
+            {
+                long? clipId = gapLibrary.FirstOrDefault(e => e.Item.Path == local.Path)?.Item.Id;
+                if (clipId is { } id)
+                {
+                    plays.Add(new PlayRecord(id, item.Start, "station break"));
+                    recentPlays[id] = item.Start;
+                }
+            }
+        }
+
+        DateTimeOffset end = start.AddMilliseconds(durationMs);
+        // The guide shows the gap as part of whatever just ended; a cold start gets its own entry.
+        if (programmes.Count > 0 && programmes[^1].Stop == start)
+            programmes[^1] = programmes[^1] with { Stop = end };
+        else
+            programmes.Add(new GuideProgramme { Start = start, Stop = end, Title = "Station break" });
+
+        _log?.Invoke($"{start:ddd HH:mm}-{end:HH:mm}  Station break before {nextShow}  ({gapItems.Count} items)");
+        return end;
     }
 
     private CatalogEntry? ReusePrior(string show)
