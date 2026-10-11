@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/TickleTV.Scheduler.Cli/TickleTV.Scheduler.Cli.csproj" />
     <Project Path="src/TickleTV.Scheduler.Core/TickleTV.Scheduler.Core.csproj" />
+    <Project Path="src/TickleTV.Scheduler.Web/TickleTV.Scheduler.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TickleTV.Scheduler.Tests/TickleTV.Scheduler.Tests.csproj" />

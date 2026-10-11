@@ -150,6 +150,11 @@ public sealed class CatalogDb : IDisposable
             ("@probed", Iso(fresh.ProbedUtc)), ("@kind", fresh.Kind.ToString()), ("@ks", fresh.KindSource), ("@title", fresh.Title), ("@year", fresh.Year));
     }
 
+    /// <summary>Refreshes the parsed facts of an item whose kind was not set by hand.</summary>
+    public void UpdateParsedFacts(long id, MediaKind kind, string kindSource, string? title, int? year) =>
+        Exec("UPDATE media_items SET kind = @k, kind_source = @ks, title = @t, year = COALESCE(@y, year) WHERE id = @id AND kind_source <> 'manual'", null,
+            ("@id", id), ("@k", kind.ToString()), ("@ks", kindSource), ("@t", title), ("@y", year));
+
     public void UpdatePath(long id, string newPath, long size, DateTimeOffset modifiedUtc) =>
         Exec("UPDATE media_items SET path = @p, file_size = @s, modified_utc = @m, missing_utc = NULL WHERE id = @id", null,
             ("@id", id), ("@p", newPath), ("@s", size), ("@m", Iso(modifiedUtc)));
@@ -245,6 +250,66 @@ public sealed class CatalogDb : IDisposable
         Query("SELECT tag, source FROM tags WHERE item_id = @id ORDER BY tag", r => new Tag(r.GetString(0), r.GetString(1)), ("@id", itemId));
 
     public static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant().Replace(' ', '-');
+
+    // ---- review queue ----
+
+    /// <summary>
+    /// Items a person should look at: the scan could not tell what they are, or could not label them well.
+    /// Each item carries the plain-language reason it is listed.
+    /// </summary>
+    private const string AttentionReasonSql = """
+        CASE
+            WHEN m.kind = 'Unknown' THEN 'Unknown'
+            WHEN m.kind = 'Episode' AND (e.item_id IS NULL OR e.season IS NULL OR e.episode IS NULL) THEN 'EpisodeDetails'
+            WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'brand:%')
+                 AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = 'brand-not-needed') THEN 'NoBrand'
+            WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%') THEN 'NoCategory'
+        END
+        """;
+
+    public IReadOnlyList<(CatalogEntry Entry, AttentionReason Reason)> ListNeedingAttention(AttentionReason? only = null, int limit = 200, int offset = 0)
+    {
+        var rows = Query($"""
+            SELECT id, reason FROM (
+                SELECT m.id AS id, m.path AS path, {AttentionReasonSql} AS reason
+                FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
+                WHERE m.missing_utc IS NULL
+            )
+            WHERE reason IS NOT NULL AND (@only IS NULL OR reason = @only)
+            ORDER BY CASE reason WHEN 'Unknown' THEN 0 WHEN 'EpisodeDetails' THEN 1 WHEN 'NoCategory' THEN 2 ELSE 3 END, path
+            LIMIT @limit OFFSET @offset
+            """, r => (r.GetInt64(0), r.GetString(1)), ("@only", only?.ToString()), ("@limit", limit), ("@offset", offset));
+        return rows.Select(r => (GetEntry(r.Item1)!, Enum.Parse<AttentionReason>(r.Item2))).ToList();
+    }
+
+    public IReadOnlyDictionary<AttentionReason, int> CountNeedingAttention()
+    {
+        var counts = Enum.GetValues<AttentionReason>().ToDictionary(r => r, _ => 0);
+        foreach ((string reason, long n) in Query($"""
+            SELECT reason, COUNT(*) FROM (
+                SELECT {AttentionReasonSql} AS reason
+                FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
+                WHERE m.missing_utc IS NULL
+            )
+            WHERE reason IS NOT NULL GROUP BY reason
+            """, r => (r.GetString(0), r.GetInt64(1))))
+            counts[Enum.Parse<AttentionReason>(reason)] = (int)n;
+        return counts;
+    }
+
+    public IReadOnlyList<string> ListTagValues(string prefix) =>
+        Query("SELECT DISTINCT substr(tag, @n) FROM tags WHERE tag LIKE @p ORDER BY 1",
+            r => r.GetString(0), ("@n", prefix.Length + 1), ("@p", prefix + "%"));
+
+    public int CountItems() => (int)Scalar<long>("SELECT COUNT(*) FROM media_items WHERE missing_utc IS NULL");
+
+    public IReadOnlyDictionary<MediaKind, int> CountByKind()
+    {
+        var result = new Dictionary<MediaKind, int>();
+        foreach ((string kind, long n) in Query("SELECT kind, COUNT(*) FROM media_items WHERE missing_utc IS NULL GROUP BY kind", r => (r.GetString(0), r.GetInt64(1))))
+            result[Enum.Parse<MediaKind>(kind)] = (int)n;
+        return result;
+    }
 
     // ---- entries ----
 

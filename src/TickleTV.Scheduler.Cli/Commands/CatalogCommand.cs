@@ -20,6 +20,7 @@ public static class CatalogCommand
         cmd.Subcommands.Add(Kind());
         cmd.Subcommands.Add(TagCmd());
         cmd.Subcommands.Add(Untag());
+        cmd.Subcommands.Add(Retag());
         return cmd;
     }
 
@@ -148,6 +149,23 @@ public static class CatalogCommand
             long itemId = p.GetRequiredValue(id);
             foreach (string t in p.GetRequiredValue(tags)) catalog.RemoveTag(itemId, t);
             Console.WriteLine($"Item {itemId} tags: {string.Join(", ", catalog.GetTags(itemId).Select(x => x.Name))}");
+            return 0;
+        });
+        return cmd;
+    }
+
+    private static Command Retag()
+    {
+        var db = DbOption();
+        var cmd = new Command("retag", "Re-apply name-based labels to everything already scanned, without probing. Manual labels are kept.");
+        cmd.Options.Add(db);
+        cmd.SetAction(p =>
+        {
+            using var catalog = new CatalogDb(p.GetRequiredValue(db).FullName);
+            catalog.BeginWork();
+            int n = new Scanner(catalog, new Core.Media.Ffprobe()).Retag();
+            catalog.CommitWork();
+            Console.WriteLine($"Refreshed labels on {n} items.");
             return 0;
         });
         return cmd;

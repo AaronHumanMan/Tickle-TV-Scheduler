@@ -52,6 +52,14 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- init
 
 This writes `tickletv.yaml` to your data folder (`%LOCALAPPDATA%\TickleTV` on Windows, `~/.local/share/TickleTV` elsewhere), finds Next's `lineup.json` when it can, and names a catalog beside the config. Every command looks for `tickletv.yaml` in the current folder first, then in the data folder, so `--config` and `--db` are only needed to point elsewhere.
 
+## The app (for people who don't want a command line)
+
+```
+dotnet run --project src/TickleTV.Scheduler.Web
+```
+
+Then open http://localhost:5062 in a browser on the same computer. The app shows what has been scanned, a **Needs attention** list of files the scan couldn't label, and plain-language help. On the Needs attention page, **Watch** opens the file in your default video player and a short form lets you say what it is, which show, the brand and category, and any labels. Answers are kept across rescans. Scanning and building still run from the command line for now; the Help page shows the exact commands.
+
 ## Catalog: scan your library
 
 The catalog is a SQLite file. Media can live in any folder layout; files are classified from their names and folder hints, and anything the scan gets wrong is fixed once by hand and stays fixed.

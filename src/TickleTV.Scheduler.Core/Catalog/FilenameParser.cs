@@ -69,7 +69,7 @@ public static partial class FilenameParser
     [GeneratedRegex(@"\bnot\s+an?\s+(?:advert|ad|commercial)\b|\b(?:end|closing|opening)\s+(?:credits|titles)\b|\bend\s+card\s+only\b", RegexOptions.IgnoreCase)]
     private static partial Regex NotAnAdvert();
 
-    [GeneratedRegex(@"\b(?:advertiser|brand|sponsor|company|product|title|name)\s+(?:not\s+(?:shown|identified|visible|in\s+clip|on\s+screen)|never\s+shown|unknown|unclear)\b|\bno\s+(?:advertiser|brand|sponsor)(?:\s+(?:shown|card|visible|on\s+screen))?\b|\bnot\s+identified\b|\bunidentified\b|\bunknown\s+(?:advertiser|brand|sponsor|product)\b|\bunbranded\b|\bfilm\s+trailer\b|\btrailer\b|^unknown\b|\bunnamed\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:advertiser|brand|sponsor|company|product|title|name)\s+(?:not\s+(?:shown|identified|visible|in\s+clip|on\s+screen)|never\s+shown|unknown|unclear)\b|\bno\s+(?:advertiser|brand|sponsor)(?:\s+(?:shown|card|visible|on\s+screen))?\b|\bnot\s+identified\b|\bunidentified\b|\bunknown\s+(?:advertiser|brand|sponsor|product)\b|\bunbranded\b|^unknown\b|\bunnamed\b", RegexOptions.IgnoreCase)]
     private static partial Regex Unbranded();
 
     [GeneratedRegex(@"\bPSA\b")]

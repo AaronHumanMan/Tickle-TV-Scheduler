@@ -1,0 +1,67 @@
+@page "/"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+
+<PageTitle>Tickle TV</PageTitle>
+
+<h1>Your channel at a glance</h1>
+
+@if (!Catalog.CatalogExists)
+{
+    <div class="card warn">
+        <h2>Nothing scanned yet</h2>
+        <p>Tickle TV hasn't looked at your videos yet. Open the <a href="help">Help page</a> and follow step 1 to scan the folders where your shows and commercials live.</p>
+    </div>
+}
+else
+{
+    <div class="tiles">
+        <div class="tile"><div class="big">@Count(MediaKind.Episode)</div><div>TV episodes</div></div>
+        <div class="tile"><div class="big">@Count(MediaKind.Commercial)</div><div>commercials</div></div>
+        <div class="tile"><div class="big">@Count(MediaKind.Bumper)</div><div>bumpers and promos</div></div>
+        <div class="tile @(attention > 0 ? "attention" : "")"><div class="big">@attention</div><div>need attention</div></div>
+    </div>
+
+    @if (attention > 0)
+    {
+        <div class="card">
+            <h2>Some files need a quick look</h2>
+            <p>@attention files were scanned but I couldn't tell what they are, or couldn't label them well. You don't have to fix them all. Each one you label makes the channel a little better.</p>
+            <a class="button" href="review">Go to Needs attention</a>
+        </div>
+    }
+    else
+    {
+        <div class="card ok">
+            <h2>Everything is labeled</h2>
+            <p>Every scanned file has a kind and a label. Nice work.</p>
+        </div>
+    }
+}
+
+<div class="card">
+    <h2>How Tickle TV works, in three steps</h2>
+    <ol class="steps">
+        <li><strong>Scan.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
+        <li><strong>Label.</strong> Most files get sorted automatically from their names. The ones that don't show up under <a href="review">Needs attention</a>, where you can watch each one and say what it is.</li>
+        <li><strong>Build.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
+    </ol>
+    <p>The <a href="help">Help page</a> walks through each step in detail.</p>
+</div>
+
+<p class="muted">Catalog: @Catalog.CatalogPath</p>
+
+@code {
+    private IReadOnlyDictionary<MediaKind, int> counts = new Dictionary<MediaKind, int>();
+    private int attention;
+
+    protected override void OnInitialized()
+    {
+        if (!Catalog.CatalogExists) return;
+        counts = Catalog.Run(db => db.CountByKind());
+        attention = Catalog.Run(db => db.CountNeedingAttention()).Values.Sum();
+    }
+
+    private int Count(MediaKind kind) => counts.TryGetValue(kind, out int n) ? n : 0;
+}

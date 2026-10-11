@@ -61,6 +61,7 @@ public class FilenameParserLibraryTests
         Assert.Equal(MediaKind.Commercial, p.Kind);
         Assert.Contains("trailer", p.Tags);
         Assert.Contains("category:film-trailers", p.Tags);
+        Assert.Contains("brand:apollo-13", p.Tags); // the film is the brand
     }
 
     [Theory]

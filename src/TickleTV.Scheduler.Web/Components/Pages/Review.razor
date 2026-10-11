@@ -1,0 +1,157 @@
+@page "/review"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+@inject FileOpener Opener
+@inject LibraryActions Actions
+@rendermode InteractiveServer
+
+<PageTitle>Needs attention</PageTitle>
+
+<h1>Needs attention</h1>
+<p class="lead">These files were scanned, but I couldn't tell what they are or couldn't label them well. Click <strong>Watch</strong> to open a file in your video player, then tell me what it is and press <strong>Save</strong>. You can stop any time; nothing here is required.</p>
+
+<div class="filters">
+    <button class="chip @(filter is null ? "active" : "")" @onclick="() => SetFilter(null)">All (@counts.Values.Sum())</button>
+    @foreach (var kv in counts.Where(kv => kv.Value > 0))
+    {
+        <button class="chip @(filter == kv.Key ? "active" : "")" @onclick="() => SetFilter(kv.Key)">@LibraryActions.ReasonTitle(kv.Key) (@kv.Value)</button>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(notice))
+{
+    <div class="notice">@notice</div>
+}
+
+@if (items.Count == 0)
+{
+    <div class="card ok"><h2>Nothing to look at</h2><p>Every file in this list has been labeled.</p></div>
+}
+
+@foreach (var row in items)
+{
+    var e = row.Entry;
+    var choice = Choice(e.Item.Id);
+    <div class="card item">
+        <div class="item-head">
+            <div>
+                <div class="title">@(e.Item.Title ?? Path.GetFileName(e.Item.Path))</div>
+                <div class="muted">@Path.GetDirectoryName(e.Item.Path) &middot; @Length(e.Item.DurationMs)</div>
+                <div class="why">@LibraryActions.ReasonText(row.Reason)</div>
+            </div>
+            <div class="actions">
+                <button class="button" @onclick="() => Watch(e.Item.Path)">Watch</button>
+                <button class="button secondary" @onclick="() => ShowInFolder(e.Item.Path)">Show in folder</button>
+            </div>
+        </div>
+
+        <div class="form">
+            <label>What is it?
+                <select @bind="choice.Kind">
+                    <option value="@MediaKind.Unknown">I don't know yet</option>
+                    <option value="@MediaKind.Commercial">A commercial</option>
+                    <option value="@MediaKind.Episode">A TV episode</option>
+                    <option value="@MediaKind.Movie">A movie</option>
+                    <option value="@MediaKind.Bumper">A bumper (station ID, "we'll be right back")</option>
+                    <option value="@MediaKind.Filler">Filler (plays when nothing else fits)</option>
+                    <option value="@MediaKind.Other">Not something to air (credits, titles, junk)</option>
+                </select>
+            </label>
+
+            @if (choice.Kind == MediaKind.Episode)
+            {
+                <label>Which show?
+                    <input list="shows" @bind="choice.Show" placeholder="Type or pick a show" />
+                    <datalist id="shows">
+                        @foreach (string s in shows) { <option value="@s" /> }
+                    </datalist>
+                </label>
+                <label>Season <input type="number" min="0" @bind="choice.Season" /></label>
+                <label>Episode <input type="number" min="0" @bind="choice.Episode" /></label>
+                <label>Episode title (optional) <input @bind="choice.EpisodeTitle" /></label>
+            }
+
+            @if (choice.Kind == MediaKind.Commercial)
+            {
+                <label>Brand (who is the ad for?)
+                    <input @bind="choice.Brand" placeholder="e.g. Taco Bell" disabled="@choice.BrandNotNeeded" />
+                </label>
+                <label class="check"><input type="checkbox" @bind="choice.BrandNotNeeded" /> There is no brand to name</label>
+                <label>Category
+                    <input list="categories" @bind="choice.Category" placeholder="e.g. Food, Cars, Toys" />
+                    <datalist id="categories">
+                        @foreach (string c in categories) { <option value="@c" /> }
+                    </datalist>
+                </label>
+            }
+
+            <label>Other labels (optional, separate with commas)
+                <input @bind="choice.ExtraLabels" placeholder="e.g. kids, christmas, late-night" />
+            </label>
+
+            <button class="button primary" @onclick="() => Save(e.Item.Id)">Save</button>
+        </div>
+    </div>
+}
+
+@if (items.Count >= PageSize)
+{
+    <p class="muted">Showing the first @PageSize. Label some and press <button class="link" @onclick="Reload">refresh</button> to see more.</p>
+}
+
+@code {
+    private const int PageSize = 50;
+    private AttentionReason? filter;
+    private IReadOnlyDictionary<AttentionReason, int> counts = new Dictionary<AttentionReason, int>();
+    private List<(CatalogEntry Entry, AttentionReason Reason)> items = [];
+    private readonly Dictionary<long, LabelChoice> choices = new();
+    private IReadOnlyList<string> shows = [];
+    private IReadOnlyList<string> categories = [];
+    private string? notice;
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        if (!Catalog.CatalogExists) { items = []; return; }
+        counts = Catalog.Run(db => db.CountNeedingAttention());
+        items = Catalog.Run(db => db.ListNeedingAttention(filter, PageSize)).ToList();
+        shows = Catalog.Run(db => db.ListShows());
+        categories = Catalog.Run(db => db.ListTagValues("category:"));
+        choices.Clear();
+    }
+
+    private void SetFilter(AttentionReason? reason)
+    {
+        filter = reason;
+        Reload();
+    }
+
+    private LabelChoice Choice(long id)
+    {
+        if (!choices.TryGetValue(id, out LabelChoice? c))
+        {
+            var entry = items.First(i => i.Entry.Item.Id == id).Entry;
+            c = LibraryActions.ChoiceFor(entry);
+            choices[id] = c;
+        }
+        return c;
+    }
+
+    private void Watch(string path) => notice = Opener.Open(path) ?? $"Opened {Path.GetFileName(path)} in your video player.";
+
+    private void ShowInFolder(string path) => notice = Opener.ShowInFolder(path) ?? "Opened the folder.";
+
+    private void Save(long id)
+    {
+        notice = Actions.Apply(id, Choice(id));
+        Reload();
+    }
+
+    private static string Length(long ms)
+    {
+        var t = TimeSpan.FromMilliseconds(ms);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : t.TotalMinutes >= 1 ? $"{t.Minutes}m {t.Seconds}s" : $"{t.Seconds}s";
+    }
+}

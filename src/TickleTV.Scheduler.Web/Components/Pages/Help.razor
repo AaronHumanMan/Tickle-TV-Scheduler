@@ -1,0 +1,53 @@
+@page "/help"
+
+<PageTitle>Help</PageTitle>
+
+<h1>Help</h1>
+<p class="lead">Tickle TV turns your video files into a TV channel that runs all day, with commercial breaks, just like real TV. This page explains each step in plain words.</p>
+
+<div class="card">
+    <h2>Step 1: Scan your videos</h2>
+    <p>Scanning tells Tickle TV where your files are. It reads each file once to learn how long it is and whether it has chapter marks, then sorts it by its name.</p>
+    <p>For now, scanning is done from a command window. Open <strong>Command Prompt</strong>, go to the Tickle TV folder, and type:</p>
+    <pre>tickletv scan "D:\My Videos\Shows" "D:\My Videos\Commercials"</pre>
+    <p>Put each folder in quotes. You can list as many folders as you like. Scanning a big library takes a while, about ten files per second. Run the same command again any time you add files; only new or changed files are read.</p>
+    <h3>How files get sorted</h3>
+    <ul>
+        <li><strong>TV episodes</strong> are recognised by a season and episode number in the name, such as <em>S04E04</em> or <em>3x07</em>. The show name comes from the file name, or from the folder above the "Season" folder.</li>
+        <li><strong>Commercials</strong> are recognised by words like <em>Commercial</em>, <em>Ad</em>, <em>PSA</em>, or <em>Promo</em> in the file name or folder name. A folder called <em>Commercials</em> makes everything inside it a commercial.</li>
+        <li><strong>Bumpers</strong> (station IDs, "we'll be right back" cards) are recognised by <em>Bumper</em>, <em>Ident</em>, or <em>Station ID</em> in the name or folder.</li>
+        <li><strong>Filler</strong> is a short video that plays when a commercial break has a few seconds left over. Name it with <em>Filler</em> or <em>Fallback</em>.</li>
+        <li>Folders named after a decade, like <em>80s</em> or <em>90s</em>, and folders under them, like <em>Cars</em> or <em>Food</em>, become labels on everything inside.</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>Step 2: Label what the scan couldn't</h2>
+    <p>Go to <a href="review">Needs attention</a>. Each file there has a short note saying why it's listed. For each one:</p>
+    <ol class="steps">
+        <li>Click <strong>Watch</strong>. The file opens in your usual video player so you can see what it is.</li>
+        <li>Pick what it is from the list: a commercial, a TV episode, a bumper, and so on.</li>
+        <li>Fill in what you know. For a commercial, the brand and a category. For an episode, the show, season, and episode number.</li>
+        <li>Click <strong>Save</strong>. The file leaves the list, and your answer is kept even if you scan again.</li>
+    </ol>
+    <p>If you truly can't tell what something is, choose <strong>Not something to air</strong> and it will never be scheduled.</p>
+</div>
+
+<div class="card">
+    <h2>Step 3: Build the schedule</h2>
+    <p>Your daily schedule says which show airs at which time, for example <em>cartoons at 6am, Star Trek at 8pm</em>. Tickle TV fills each hour with episodes, adds commercial breaks between scenes, and pads each show so the next one starts right on the hour or half hour.</p>
+    <p>For now, building is done from the command window:</p>
+    <pre>tickletv build</pre>
+    <p>This writes the next 24 hours for ErsatzTV. Run it once a day, or whenever you change the schedule. It joins in at the end of whatever is playing, so the show on air is never interrupted.</p>
+</div>
+
+<div class="card">
+    <h2>Words you'll see</h2>
+    <dl class="glossary">
+        <dt>Bumper</dt><dd>A few seconds of video between a show and its commercials, like a station logo or "we'll be right back".</dd>
+        <dt>Filler</dt><dd>A video that loops to cover the last few seconds of a break when no commercial fits exactly.</dd>
+        <dt>Chapter marks</dt><dd>Points inside an episode file that mark scene changes. Tickle TV puts commercial breaks there, so they land between scenes.</dd>
+        <dt>Padding</dt><dd>Extra commercials added so a show ends exactly on the hour or half hour.</dd>
+        <dt>Catalog</dt><dd>Tickle TV's list of everything it has scanned, plus the labels you've added.</dd>
+    </dl>
+</div>

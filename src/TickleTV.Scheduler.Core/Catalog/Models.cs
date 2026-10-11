@@ -63,3 +63,16 @@ public sealed record CatalogEntry
     public required IReadOnlyList<CatalogChapter> Chapters { get; init; }
     public required IReadOnlyList<Tag> Tags { get; init; }
 }
+
+/// <summary>Why an item is in the review queue.</summary>
+public enum AttentionReason
+{
+    /// <summary>The scan could not tell what kind of file this is.</summary>
+    Unknown,
+    /// <summary>A TV episode with no show name, season, or episode number.</summary>
+    EpisodeDetails,
+    /// <summary>A commercial with no brand label.</summary>
+    NoBrand,
+    /// <summary>A commercial with no category label.</summary>
+    NoCategory,
+}

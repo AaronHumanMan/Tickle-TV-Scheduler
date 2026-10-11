@@ -148,6 +148,34 @@ public sealed class Scanner
         };
     }
 
+    /// <summary>
+    /// Re-runs the name parser over every catalogued file without probing, refreshing kind, title, year,
+    /// episode facts, and automatic tags. Anything a person set by hand is left alone.
+    /// </summary>
+    public int Retag()
+    {
+        int changed = 0;
+        foreach (MediaItem item in _db.ListItems(includeMissing: false))
+        {
+            ParsedName parsed = FilenameParser.Parse(item.Path);
+            if (item.KindSource != FactSource.Manual)
+            {
+                _db.UpdateParsedFacts(item.Id, parsed.Kind, parsed.KindSource, parsed.Title, parsed.Year);
+            }
+            if (parsed.Show is not null)
+            {
+                _db.UpsertEpisode(item.Id, new EpisodeInfo
+                {
+                    Show = parsed.Show, Season = parsed.Season, Episode = parsed.Episode, AirDate = parsed.AirDate,
+                    EpisodeTitle = parsed.EpisodeTitle, Source = parsed.ShowSource ?? FactSource.Filename,
+                });
+            }
+            ApplyAutoTags(item.Id, parsed, _db.FindById(item.Id)!);
+            changed++;
+        }
+        return changed;
+    }
+
     private void ApplyAutoTags(long id, ParsedName parsed, MediaItem item)
     {
         _db.ClearAutoTags(id);

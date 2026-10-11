@@ -1,0 +1,40 @@
+@page "/shows"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+
+<PageTitle>My shows</PageTitle>
+
+<h1>My shows</h1>
+<p class="lead">Every show Tickle TV found, with how many episodes it has. A show needs chapter marks in its files for commercial breaks to land between scenes; without them, breaks are spaced evenly.</p>
+
+@if (rows.Count == 0)
+{
+    <div class="card"><p>No shows yet. Scan a folder that holds TV episodes first.</p></div>
+}
+else
+{
+    <table class="table">
+        <thead><tr><th>Show</th><th>Episodes</th><th>With chapter marks</th><th>With air dates</th></tr></thead>
+        <tbody>
+        @foreach (var r in rows)
+        {
+            <tr><td>@r.Show</td><td>@r.Episodes</td><td>@r.WithChapters</td><td>@r.WithDates</td></tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<(string Show, int Episodes, int WithChapters, int WithDates)> rows = [];
+
+    protected override void OnInitialized()
+    {
+        if (!Catalog.CatalogExists) return;
+        rows = Catalog.Run(db => db.ListShows().Select(show =>
+        {
+            var eps = db.EpisodesOf(show);
+            return (show, eps.Count, eps.Count(e => e.Chapters.Count > 1), eps.Count(e => e.Episode?.AirDate is not null));
+        }).ToList());
+    }
+}
