@@ -1,0 +1,94 @@
+@page "/scan"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@inject JobRunner Jobs
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Scan</PageTitle>
+
+<h1>Scan my videos</h1>
+<p class="lead">Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads each file once to learn how long it is and whether it has chapter marks, then sorts it by its name. Scanning again later only reads files that are new or changed.</p>
+
+<div class="card">
+    <h2>My media folders</h2>
+    @if (roots.Count == 0)
+    {
+        <p>No folders yet. Add the folder (or drive) where your videos live. Subfolders are included automatically.</p>
+    }
+    else
+    {
+        <ul class="roots">
+            @foreach (string r in roots)
+            {
+                <li><span class="path">@r</span> <button class="link" @onclick="() => Remove(r)">remove</button></li>
+            }
+        </ul>
+    }
+    <div class="inline-form">
+        <input @bind="newRoot" placeholder="e.g. G:\Commercials or D:\My Videos" @onkeydown="OnKey" />
+        <button class="button" @onclick="Add">Add folder</button>
+    </div>
+    <p class="muted">Tip: open the folder in File Explorer, click the address bar at the top, copy what's there, and paste it here.</p>
+    @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+</div>
+
+<div class="card">
+    <h2>Start a scan</h2>
+    <p>Scanning a big library takes a while, about ten files a second. You can keep using the app while it runs.</p>
+    <button class="button primary" disabled="@(roots.Count == 0 || Jobs.IsBusy)" @onclick="ScanAll">Scan all my folders</button>
+</div>
+
+<JobPanel />
+
+@code {
+    private List<string> roots = [];
+    private string newRoot = "";
+    private string? notice;
+
+    protected override void OnInitialized()
+    {
+        roots = Config.LoadLoose().MediaRoots.ToList();
+        Jobs.Changed += OnJobChanged;
+    }
+
+    public void Dispose() => Jobs.Changed -= OnJobChanged;
+
+    private void OnJobChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void Add()
+    {
+        string path = newRoot.Trim().Trim('"');
+        if (path.Length == 0) return;
+        if (!Directory.Exists(path)) { notice = $"I can't find a folder at \"{path}\". Check the spelling, or copy the path from File Explorer's address bar."; return; }
+        if (roots.Any(r => string.Equals(r, path, StringComparison.OrdinalIgnoreCase))) { notice = "That folder is already in the list."; return; }
+        roots.Add(path);
+        SaveRoots();
+        newRoot = "";
+        notice = $"Added {path}. Press \"Scan all my folders\" when you're ready.";
+    }
+
+    private void Remove(string path)
+    {
+        roots.Remove(path);
+        SaveRoots();
+        notice = "Removed. Files already scanned stay in the catalog until the next scan marks them missing.";
+    }
+
+    private void SaveRoots()
+    {
+        SchedulerConfig cfg = Config.LoadLoose();
+        cfg.MediaRoots = roots.ToList();
+        Config.Save(cfg);
+    }
+
+    private void ScanAll()
+    {
+        try { Jobs.StartScan(roots.ToList()); notice = null; }
+        catch (InvalidOperationException ex) { notice = ex.Message; }
+    }
+
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") Add(); }
+}

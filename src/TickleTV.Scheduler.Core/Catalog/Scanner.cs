@@ -8,6 +8,8 @@ public interface IMediaProber
     Task<MediaProbe> ProbeAsync(string path, CancellationToken ct = default);
 }
 
+public sealed record ScanProgress(int Done, int Total, string CurrentFile);
+
 public sealed record ScanReport
 {
     public int Added { get; init; }
@@ -38,7 +40,7 @@ public sealed class Scanner
         _log = log;
     }
 
-    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> roots, CancellationToken ct = default)
+    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> roots, CancellationToken ct = default, IProgress<ScanProgress>? progress = null)
     {
         int added = 0, updated = 0, moved = 0, unchanged = 0;
         var unclassified = new List<string>();
@@ -46,6 +48,8 @@ public sealed class Scanner
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
+        // Enumerate first so progress can show "x of y".
+        var files = new List<string>();
         foreach (string root in roots)
         {
             string fullRoot = Path.GetFullPath(root);
@@ -54,12 +58,18 @@ public sealed class Scanner
                 errors.Add($"Root not found: {fullRoot}");
                 continue;
             }
+            files.AddRange(Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories)
+                .Where(f => Extensions.Contains(Path.GetExtension(f).ToLowerInvariant())));
+        }
+        progress?.Report(new ScanProgress(0, files.Count, ""));
 
-            foreach (string file in Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories))
+        int done = 0;
+        {
+            foreach (string file in files)
             {
                 ct.ThrowIfCancellationRequested();
-                if (!Extensions.Contains(Path.GetExtension(file).ToLowerInvariant())) continue;
                 seen.Add(file);
+                progress?.Report(new ScanProgress(++done, files.Count, file));
 
                 try
                 {

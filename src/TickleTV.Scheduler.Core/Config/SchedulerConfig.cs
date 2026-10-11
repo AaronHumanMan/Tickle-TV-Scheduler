@@ -8,6 +8,8 @@ namespace TickleTV.Scheduler.Core.Config;
 public sealed class SchedulerConfig
 {
     public string Catalog { get; set; } = "tickletv.sqlite";
+    /// <summary>Folders the app scans. The CLI can scan any folder; the app scans these.</summary>
+    public List<string> MediaRoots { get; set; } = [];
     public NextConfig Next { get; set; } = new();
     public List<ChannelConfig> Channels { get; set; } = [];
 
@@ -41,6 +43,19 @@ public sealed class SchedulerConfig
         cfg.BaseDirectory = baseDirectory;
         cfg.Validate();
         return cfg;
+    }
+
+    /// <summary>Writes the config back to disk, preserving a comment header.</summary>
+    public void Save(string path)
+    {
+        var serializer = new SerializerBuilder()
+            .WithNamingConvention(UnderscoredNamingConvention.Instance)
+            .ConfigureDefaultValuesHandling(DefaultValuesHandling.Preserve)
+            .Build();
+        string yaml = "# Tickle TV Scheduler config. Edited by the app; paths are relative to this file.\n\n" + serializer.Serialize(this);
+        string tmp = path + ".tmp";
+        File.WriteAllText(tmp, yaml);
+        File.Move(tmp, path, overwrite: true);
     }
 
     public void Validate()

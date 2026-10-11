@@ -8,6 +8,8 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSingleton<CatalogAccess>();
 builder.Services.AddSingleton<FileOpener>();
 builder.Services.AddSingleton<LibraryActions>();
+builder.Services.AddSingleton<ConfigStore>();
+builder.Services.AddSingleton<JobRunner>();
 
 var app = builder.Build();
 

@@ -96,3 +96,13 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .search-card .form { align-items: end; }
 .search-card .actions { display: flex; gap: 8px; }
 .pager { display: flex; gap: 12px; align-items: center; margin: 14px 0; }
+
+.roots { list-style: none; padding: 0; margin: 0 0 12px; }
+.roots li { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.roots .path { font-family: Consolas, monospace; font-size: 0.95rem; }
+.bar { height: 14px; background: #e6eaf2; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+.bar .fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+.job .summary { font-size: 1.05rem; font-weight: 600; }
+.job .log { max-height: 260px; overflow: auto; font-size: 0.85rem; }
+.job .warnings { color: #8a5a00; }
+.table.compact td, .table.compact th { padding: 6px 10px; font-size: 0.95rem; }

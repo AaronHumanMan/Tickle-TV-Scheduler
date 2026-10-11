@@ -2,6 +2,8 @@
 @using TickleTV.Scheduler.Core.Catalog
 @using TickleTV.Scheduler.Web.Services
 @inject CatalogAccess Catalog
+@inject JobRunner Jobs
+@rendermode InteractiveServer
 
 <PageTitle>Tickle TV</PageTitle>
 
@@ -11,7 +13,8 @@
 {
     <div class="card warn">
         <h2>Nothing scanned yet</h2>
-        <p>Tickle TV hasn't looked at your videos yet. Open the <a href="help">Help page</a> and follow step 1 to scan the folders where your shows and commercials live.</p>
+        <p>Tickle TV hasn't looked at your videos yet. Go to <a href="scan">Scan</a>, add the folders where your shows and commercials live, and press Scan.</p>
+        <a class="button primary" href="scan">Go to Scan</a>
     </div>
 }
 else
@@ -40,12 +43,14 @@ else
     }
 }
 
+<JobPanel />
+
 <div class="card">
     <h2>How Tickle TV works, in three steps</h2>
     <ol class="steps">
-        <li><strong>Scan.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
-        <li><strong>Label.</strong> Most files get sorted automatically from their names. The ones that don't show up under <a href="review">Needs attention</a>, where you can watch each one and say what it is.</li>
-        <li><strong>Build.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
+        <li><strong><a href="scan">Scan</a>.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
+        <li><strong><a href="review">Label</a>.</strong> Most files get sorted automatically from their names. The ones that don't show up under Needs attention, where you can watch each one and say what it is.</li>
+        <li><strong><a href="build">Build</a>.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
     </ol>
     <p>The <a href="help">Help page</a> walks through each step in detail.</p>
 </div>
@@ -57,6 +62,12 @@ else
     private int attention;
 
     protected override void OnInitialized()
+    {
+        Jobs.Changed += () => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
+        Refresh();
+    }
+
+    private void Refresh()
     {
         if (!Catalog.CatalogExists) return;
         counts = Catalog.Run(db => db.CountByKind());

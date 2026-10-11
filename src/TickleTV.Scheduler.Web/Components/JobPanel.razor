@@ -1,0 +1,75 @@
+@* Shows the background job that is running or just finished, with a progress bar and the last log lines. *@
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Core.Engine
+@using TickleTV.Scheduler.Web.Services
+@inject JobRunner Jobs
+@implements IDisposable
+
+@{
+    var job = Jobs.Current ?? Jobs.Last;
+}
+@if (job is not null)
+{
+    <div class="card job @(job.Failed ? "warn" : job.Running ? "" : "ok")">
+        <h2>@job.Title</h2>
+        @if (job.Running)
+        {
+            @if (job.Total > 0)
+            {
+                <div class="bar"><div class="fill" style="width:@(job.Percent.ToString("0"))%"></div></div>
+                <p>@job.Done of @job.Total files &middot; @job.Current</p>
+            }
+            else
+            {
+                <p>Working&hellip;</p>
+            }
+        }
+        else
+        {
+            <p class="summary">@job.Summary</p>
+            @if (job.Result is ScanReport scan && scan.Unclassified.Count > 0)
+            {
+                <p><a class="button" href="review">See what needs attention</a></p>
+            }
+            @if (job.Result is List<ChannelBuildReport> reports)
+            {
+                foreach (var r in reports)
+                {
+                    <h3>Channel @r.Channel @r.Name: @r.Start.ToString("ddd HH:mm") to @r.End.ToString("ddd HH:mm")</h3>
+                    @if (r.Error is not null) { <p class="why">@r.Error</p> }
+                    @if (r.Warnings.Count > 0)
+                    {
+                        <ul class="warnings">@foreach (string w in r.Warnings) { <li>@w</li> }</ul>
+                    }
+                    <table class="table compact">
+                        <thead><tr><th>Starts</th><th>Ends</th><th>Programme</th><th>Episode</th></tr></thead>
+                        <tbody>
+                        @foreach (var p in r.Programmes)
+                        {
+                            <tr><td>@p.Start.ToString("ddd HH:mm")</td><td>@p.Stop.ToString("HH:mm")</td><td>@p.Title</td><td>@p.EpisodeNumber @p.SubTitle</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            }
+        }
+        @if (job.Log.Count > 0)
+        {
+            <details>
+                <summary>Details</summary>
+                <pre class="log">@string.Join("\n", Tail(job))</pre>
+            </details>
+        }
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Jobs.Changed += OnChanged;
+    public void Dispose() => Jobs.Changed -= OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private static IEnumerable<string> Tail(JobState job)
+    {
+        lock (job.Log) { return job.Log.Skip(Math.Max(0, job.Log.Count - 60)).ToList(); }
+    }
+}

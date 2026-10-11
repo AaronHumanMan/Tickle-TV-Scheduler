@@ -1,0 +1,88 @@
+@page "/build"
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Core.Engine
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@inject JobRunner Jobs
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Build the schedule</PageTitle>
+
+<h1>Build the schedule</h1>
+<p class="lead">Building turns your daily schedule into the next day of television for ErsatzTV: episodes in order, commercial breaks between scenes, bumpers, and every show ending on time. Preview first to see the plan; nothing changes until you press Build.</p>
+
+@if (cfg is null || cfg.Channels.Count == 0)
+{
+    <div class="card warn">
+        <h2>No schedule yet</h2>
+        <p>There's no channel schedule to build from. The schedule editor is coming next; for now the schedule lives in <code>@Config.Path</code>.</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <h2>Your daily schedule</h2>
+        @foreach (var ch in cfg.Channels)
+        {
+            <h3>Channel @ch.Number: @ch.Name</h3>
+            <table class="table compact">
+                <thead><tr><th>From</th><th>Show</th><th>Order</th><th>Ends on</th></tr></thead>
+                <tbody>
+                @foreach (var s in ch.Schedule.OrderBy(s => s.StartTime))
+                {
+                    <tr><td>@s.StartTime.ToString("HH:mm")</td><td>@s.Show</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+        <p class="muted">ErsatzTV lineup: @cfg.ResolvePath(cfg.Next.Lineup)</p>
+    </div>
+
+    <div class="card">
+        <h2>Preview, then build</h2>
+        <p><strong>Preview</strong> shows what the next 24 hours would look like without changing anything. <strong>Build</strong> writes it for ErsatzTV. A build joins in at the end of whatever is playing now, so the show on air is never interrupted.</p>
+        <div class="actions">
+            <button class="button" disabled="@Jobs.IsBusy" @onclick="Preview">Preview the next 24 hours</button>
+            <button class="button primary" disabled="@Jobs.IsBusy" @onclick="BuildNow">Build and send to ErsatzTV</button>
+        </div>
+        @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+    </div>
+}
+
+<JobPanel />
+
+@code {
+    private SchedulerConfig? cfg;
+    private string? notice;
+
+    protected override void OnInitialized()
+    {
+        Jobs.Changed += OnJobChanged;
+        try { cfg = Config.Load(); }
+        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException) { cfg = null; notice = ex.Message; }
+    }
+
+    public void Dispose() => Jobs.Changed -= OnJobChanged;
+    private void OnJobChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void Preview() => Start(dryRun: true);
+    private void BuildNow() => Start(dryRun: false);
+
+    private void Start(bool dryRun)
+    {
+        if (cfg is null) return;
+        try { Jobs.StartBuild(cfg, new BuildOptions { DryRun = dryRun }); notice = null; }
+        catch (InvalidOperationException ex) { notice = ex.Message; }
+    }
+
+    private static string PadWords(string pad) => pad.Trim().ToLowerInvariant() switch
+    {
+        "30" => "the half hour",
+        "60" => "the hour",
+        "5" => "the next 5 minutes",
+        "10" => "the next 10 minutes",
+        "none" or "0" => "when the show ends",
+        _ => pad,
+    };
+}
