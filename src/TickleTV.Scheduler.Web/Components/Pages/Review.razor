@@ -17,6 +17,11 @@
     }
 </div>
 
+@if (entries.Count > 0)
+{
+    <p class="muted"><a class="link" href="@("/export/review.csv" + (filter is null ? "" : "?reason=" + filter))" target="_blank">Export this list as a spreadsheet (.csv)</a></p>
+}
+
 <ItemList Items="entries" NoteFor="NoteFor" EmptyTitle="Nothing to look at" EmptyText="Every file in this list has been labeled." OnChanged="Reload" />
 
 @if (entries.Count >= PageSize)

@@ -96,6 +96,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 - A rebuild joins the running schedule at the end of the programme on air: what's playing finishes as planned, the new schedule starts there, and earlier items are carried into the new file. It keeps the episodes the old window had already assigned, so rebuilding does not move shows forward; pass `--fresh` to pick again. `--dry-run` prints the plan and changes nothing, including rotation state.
 - `bumpers` brackets each break with a clip before the ads and one after, drawn from a pool, rotating so the same bumper isn't seen every break. Bumpers carry `station-id`, `break-card`, or `promo` tags; use `before_tag` / `after_tag` to pick which plays where.
 - `filler` names a clip that covers whatever ads and bumpers cannot fill exactly, playing from its start and looping as needed. Without one, gaps are black video with silence. Any file with Filler, Fallback, or Slate in its name is a filler.
+- An episode with no usable chapter marks gets no mid-show breaks; it runs straight through and is padded at the end to the next 5 minutes (`no_chapter_pad`). Set `fallback_breaks` above 0 to space breaks evenly instead.
 - `cold_open_break` keeps the cut right after a short first chapter (a teaser or cold open), the way real TV breaks.
 - `parse <folder>` shows how files would be classified without probing or writing anything.
 

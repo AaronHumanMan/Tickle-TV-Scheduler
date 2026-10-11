@@ -98,6 +98,8 @@ public static class InitCommand
               pre_roll: false
               post_roll: true
               cold_open_break: true
+              fallback_breaks: 0     # no chapter marks: no mid-show breaks
+              no_chapter_pad: 5      # ...just pad at the end to the next 5 minutes
 
             ads:
               pool: kind = commercial

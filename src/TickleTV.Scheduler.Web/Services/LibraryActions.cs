@@ -122,7 +122,7 @@ public sealed class LibraryActions
         AttentionReason.NoBrand => "This commercial has no brand label yet.",
         AttentionReason.NoCategory => "This commercial has no category yet.",
         AttentionReason.BumperUnsorted => "This is in a bumper folder, but I can't tell if it's a station ID, a break card, or a promo for a show.",
-        AttentionReason.NoChapters => "This episode has no chapter marks, so commercial breaks will be spaced evenly instead of between scenes. Nothing to fix here unless you want to add chapters to the file.",
+        AttentionReason.NoChapters => "This episode has no chapter marks, so it will play straight through with commercials only at the end. Nothing to fix unless you want breaks inside it; adding chapter marks to the file does that.",
         _ => "",
     };
 

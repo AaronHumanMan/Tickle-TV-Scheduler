@@ -19,6 +19,7 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+CsvExport.Map(app);
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

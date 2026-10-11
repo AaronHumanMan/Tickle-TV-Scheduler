@@ -102,20 +102,31 @@ public sealed class ChannelBuilder
             if (ads.Count < 4 && adLibrary.Count > 0)
                 warnings.Add($"{cursor:ddd HH:mm} {slot.Show}: only {ads.Count} ads available after pool filter and cooldown.");
 
+            var probe = new MediaProbe
+            {
+                Path = episode.Item.Path,
+                DurationMs = episode.Item.DurationMs,
+                Chapters = episode.Chapters.Select(c => new Chapter(c.StartMs, c.EndMs, c.Title)).ToList(),
+                Streams = [],
+            };
+            BreakPolicy breakPolicy = slot.BreakPolicy(_channel.Defaults);
+            PaddingPolicy paddingPolicy = slot.PaddingPolicy(_channel.Defaults);
+
+            // No natural break points: run the show straight through and pad only at the end, to a short boundary.
+            if (BreakPlanner.PlanActs(probe.DurationMs, probe.Chapters, breakPolicy).Count <= 1)
+            {
+                breakPolicy = breakPolicy with { PreRoll = false, PostRoll = true };
+                paddingPolicy = paddingPolicy with { Mode = _channel.Defaults.NoChapterPaddingMode };
+            }
+
             var request = new SpikeRequest
             {
-                Episode = new MediaProbe
-                {
-                    Path = episode.Item.Path,
-                    DurationMs = episode.Item.DurationMs,
-                    Chapters = episode.Chapters.Select(c => new Chapter(c.StartMs, c.EndMs, c.Title)).ToList(),
-                    Streams = [],
-                },
+                Episode = probe,
                 Title = GuideTitle(episode),
                 Start = cursor,
                 Ads = ads,
-                BreakPolicy = slot.BreakPolicy(_channel.Defaults),
-                PaddingPolicy = slot.PaddingPolicy(_channel.Defaults),
+                BreakPolicy = breakPolicy,
+                PaddingPolicy = paddingPolicy,
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
                 Bumpers = bumperSet,
                 Filler = gapFiller,

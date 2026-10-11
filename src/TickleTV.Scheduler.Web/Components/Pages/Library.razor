@@ -39,7 +39,9 @@
     </div>
 </div>
 
-<p class="muted">@total matching file@(total == 1 ? "" : "s")@(total > PageSize ? $", showing {page * PageSize + 1} to {Math.Min(total, (page + 1) * PageSize)}" : "")</p>
+<p class="muted">@total matching file@(total == 1 ? "" : "s")@(total > PageSize ? $", showing {page * PageSize + 1} to {Math.Min(total, (page + 1) * PageSize)}" : "")
+    @if (total > 0) { <text> &middot; </text><a class="link" href="@ExportUrl()" target="_blank">Export this search as a spreadsheet (.csv)</a> }
+</p>
 
 <ItemList Items="entries" EmptyTitle="No matches" EmptyText="Try fewer filters or a different word." OnChanged="Reload" />
 
@@ -92,6 +94,11 @@
         if (page * PageSize >= total) page = 0;
         entries = Catalog.Run(db => db.Search(f, PageSize, page * PageSize)).ToList();
     }
+
+    private string ExportUrl() =>
+        "/export/library.csv?" + string.Join("&", new[] { ("text", text), ("kind", kind), ("show", show), ("category", category), ("tag", tag) }
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Item2))
+            .Select(kv => $"{kv.Item1}={Uri.EscapeDataString(kv.Item2)}"));
 
     private void Search() { page = 0; Reload(); }
     private void Clear() { text = ""; kind = ""; show = ""; category = ""; tag = ""; page = 0; Reload(); }

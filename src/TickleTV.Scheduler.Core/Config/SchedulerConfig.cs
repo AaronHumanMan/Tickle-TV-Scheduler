@@ -113,12 +113,18 @@ public sealed class SlotDefaults
     public int MinActSeconds { get; set; } = 120;
     public bool PreRoll { get; set; } = false;
     public bool PostRoll { get; set; } = true;
-    public int FallbackBreaks { get; set; } = 2;
+    /// <summary>Mid-show breaks for episodes with no usable chapter marks. 0 means none: the show runs straight through.</summary>
+    public int FallbackBreaks { get; set; } = 0;
+    /// <summary>Padding used for an episode that gets no mid-show breaks: 30, 60, 5, 10, or none. Default: pad to the next 5 minutes.</summary>
+    public string NoChapterPad { get; set; } = "5";
     /// <summary>Always break after a short first chapter (cold open or teaser), the classic TV pattern.</summary>
     public bool ColdOpenBreak { get; set; } = true;
 
     [YamlIgnore]
     public PaddingMode PaddingMode => ParsePad(Pad);
+
+    [YamlIgnore]
+    public PaddingMode NoChapterPaddingMode => ParsePad(NoChapterPad);
 
     public static PaddingMode ParsePad(string value) => value.Trim().ToLowerInvariant() switch
     {

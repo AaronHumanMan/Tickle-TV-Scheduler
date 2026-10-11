@@ -21,6 +21,8 @@ channels:
       pre_roll: false
       post_roll: true
       cold_open_break: true  # always break after a short first chapter (teaser), like real TV
+      fallback_breaks: 0     # episodes with no chapter marks get no mid-show breaks...
+      no_chapter_pad: 5      # ...and are padded at the end to the next 5 minutes
 
     ads:
       # Pool query. Terms join with AND; prefix a term with NOT to exclude.
