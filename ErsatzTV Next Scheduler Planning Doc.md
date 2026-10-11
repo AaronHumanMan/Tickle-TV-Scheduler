@@ -26,7 +26,7 @@ The scheduler is a standalone tool that builds broadcast-style playouts (shows, 
 
 The scheduler's only output is playout JSON files written into each channel's playout folder. [ErsatzTV Next](https://github.com/ErsatzTV/next) is a Rust streaming engine that explicitly leaves scheduling and playout creation to outside tools. It reads playout files and streams them as HLS, M3U, and XMLTV.
 
-**What Next gives the scheduler to work with** (playout schema version 0.0.6):
+**What Next gives the scheduler to work with** (playout schema 0.0.5, the newest the released Next 0.2.0 accepts; engines take any version at or below their own):
 
 | Capability | Schema detail | Why the scheduler cares |
 | --- | --- | --- |
@@ -41,11 +41,11 @@ The scheduler's only output is playout JSON files written into each channel's pl
 
 **Key constraints**
 
-- Playout items have no title or description field. It is unclear how Next builds XMLTV program entries. See Open questions.
+- Playout items have no title or description field. Guide data is a separate XMLTV file per channel that the scheduler also writes.
 - Each file declares a `version`, and Next rejects versions it does not understand. The scheduler must pin a schema version and track Next's changelog.
 - The maintainers will not take scheduling feature requests, so everything in this doc lives in the scheduler.
 
-Sources: [README](https://github.com/ErsatzTV/next), [schema/playout.json](https://github.com/ErsatzTV/next/blob/main/schema/playout.json), [schema/channel_config.json](https://github.com/ErsatzTV/next/blob/main/schema/channel_config.json), [example playout](https://github.com/ErsatzTV/next/blob/main/examples/playout/playout.json).
+Sources: [README](https://github.com/ErsatzTV/next), [schema/playout.json](https://github.com/ErsatzTV/next/blob/main/schema/playout.json), [schema/channel\_config.json](https://github.com/ErsatzTV/next/blob/main/schema/channel_config.json), [example playout](https://github.com/ErsatzTV/next/blob/main/examples/playout/playout.json).
 
 ## Plex and Jellyfin libraries
 
@@ -93,9 +93,32 @@ A Plex label or Jellyfin tag beats every rule, so users tag shows in the tool th
 
 Sources: [Jellyfin media segments](https://jellyfin.org/docs/general/server/metadata/media-segments), [Jellyfin ChapterInfo model](https://typescript-sdk.jellyfin.org/interfaces/generated-client.ChapterInfo.html), [Jellyfin MediaSegmentDto model](https://typescript-sdk.jellyfin.org/interfaces/generated-client.MediaSegmentDto.html), [Plex Media Server API](https://developer.plex.tv/pms/), [Plex marker format in the Infuse forum](https://community.firecore.com/t/add-support-for-plex-skip-intro/19936?page=3), [legacy ErsatzTV Jellyfin integration](https://mintlify.wiki/ErsatzTV/legacy/integrations/jellyfin), [legacy ErsatzTV Plex integration](https://mintlify.wiki/ErsatzTV/legacy/integrations/plex).
 
+## Media catalog: a database instead of folders
+
+Decided Oct 10, 2026: the catalog is the organizing model, not a cache behind folders. A file can live anywhere, belongs to as many pools as its facts allow, and is selected by query. Folders become an optional hint.
+
+**What the scan records.** One SQLite file, built by a scan command over any roots the user names. Each file is probed once and re-probed only when its size or modified time changes.
+
+| Table | Holds | Filled from |
+| --- | --- | --- |
+| media\_items | path, kind (episode, movie, commercial, bumper, filler), duration\_ms, codec facts, source, external\_id, probed\_at | Scan plus ffprobe, or the Plex and Jellyfin APIs |
+| chapters, markers | start and end per chapter; intro, credits, and commercial markers | ffprobe, Plex, Jellyfin |
+| episodes | show, season, episode number, title, original air date | Filename parsing, container tags, server metadata |
+| tags | free labels per item such as taco-bell, 1991, psa, kids | Rules on scan, plus manual tag commands |
+| plays | item, channel, aired\_at, slot context | Every build |
+| rotation | per show and channel: order mode, position, current shuffle cycle | Every build |
+
+**Where facts come from, highest priority first.** Manual tags always win. Then container tags, since ffprobe returns title, show, episode, and date when the ripping tool wrote them. Then filename patterns such as `S04E04`, four-digit years, `1990-10-15` dates, and words like Commercial, PSA, and Promo. Folder names last, as a weak hint. The scan ends with a report of files it could not classify.
+
+**Pools are saved queries.** An ad pool is a filter expression instead of a directory, for example `kind = commercial AND year BETWEEN 1988 AND 1994 AND NOT tag:late-night`. A bumper set is `kind = bumper AND tag:station-id`. The filler takes the pool's candidates, drops anything in `plays` inside the cooldown window, then fits the break.
+
+**Era matching.** Because both the episode and the commercial carry a year, a pool can be relative: commercials from within three years of the airing episode's date. A 1991 TNG episode and a 1995 Simpsons episode pull different spots from the same library with no sorting.
+
+**Costs.** Filename parsing is heuristic, so the scan report and a quick tag command matter from day one. The database is the thing to back up, not just a cache. Changing a file's path moves it, not its identity, because items are keyed by a content hash of the first and last megabyte plus size.
+
 ## Feature requirements
 
-Six capabilities define v1. Each one names its acceptance test so the engine can be checked against it.
+Seven capabilities define v1. Each one names its acceptance test so the engine can be checked against it.
 
 | # | Requirement | Behavior | Acceptance test |
 | --- | --- | --- | --- |
@@ -105,6 +128,7 @@ Six capabilities define v1. Each one names its acceptance test so the engine can
 | R4 | Schedule by time of day, time of year, or holiday | Day-parts such as morning cartoons, prime time, and late night. Seasonal ranges such as summer or the school year. Holidays as fixed dates, like Dec 25, or rules, like the fourth Thursday of November. The most specific matching rule wins. | On Dec 24 the 8pm slot airs the Christmas block. The rest of December airs the normal prime-time block. |
 | R5 | Commercials by show type | Show types such as kids, sitcom, anime, and late night each map to one or more ad pools. Ads carry tags too, so a kids show never pulls a late-night ad. | Across a week of generated playouts, no ad tagged late-night appears in a kids show. |
 | R6 | Pad to minute boundaries | A slot's end snaps to the next 30 or 60 minutes, or to the next 5 or 10 minutes. The gap is filled with ads, bumpers, and filler spread across the show's breaks. | A 22:10 episode in a 30-minute slot gets 7:50 of breaks and the next show starts at :00 or :30 exactly. |
+| R7 | Configurable episode order | Per show and channel the user picks chronological or shuffle. Chronological follows original air date, falling back to season and episode number, and wraps to the start when the show runs out. Shuffle draws without replacement: every episode airs once before any repeats, then a new cycle is shuffled. Position survives rebuilds and restarts. | A 178-episode show in shuffle mode airs 178 distinct episodes before the first repeat. Switching to chronological mid-run resumes from the next unaired episode in date order. |
 
 **Supporting requirements**
 
@@ -119,19 +143,20 @@ Everything the engine schedules is a media item with tags. Rules decide which ta
 
 | Entity | What it is | Key fields |
 | --- | --- | --- |
-| MediaItem | One playable file: episode, movie, ad, bumper, or filler | source, external_id, path, kind, duration_ms, chapters[], markers[], tags[], probe data (codecs, streams) |
-| Show | A series or collection of MediaItems | title, show_type, episode order (sequential or shuffle), rotation state |
+| MediaItem | One playable file: episode, movie, ad, bumper, or filler | content\_hash, path, kind, duration\_ms, chapters\[\], markers\[\], tags\[\], year, probe data (codecs, streams), source, external\_id |
+| Show | A series or collection of MediaItems | title, show\_type, order mode (chronological or shuffle), per-channel rotation state: next position for chronological, remaining episode list for the current shuffle cycle |
 | ShowType | The audience category | name (kids, sitcom, anime, late night), default ad pools, default bumper sets |
-| AdPool | A weighted set of commercials | name, tag filter or explicit list, weight per item, cooldown minutes |
+| AdPool | A weighted set of commercials | name, filter query over the catalog (kind, tags, year range, or relative era), weight per item, cooldown minutes |
 | BumperSet | Bumpers grouped by role | role (intro, outro, break-in, break-out, station ID), tag filter, theme |
 | FillerPool | Short clips used to close the last few seconds | items, min and max length, lavfi slate as last resort |
 | BreakPolicy | How a show's breaks are shaped | use chapters (yes/no), max mid-breaks, min act length, pre-roll, post-roll, bumper bracketing |
 | PaddingPolicy | How the slot end snaps | mode (30, 60, next 5, next 10, none), max pad, min pad |
-| Block | A reusable run of slots, like "Saturday morning cartoons" | slots[] with show or show-type picks, BreakPolicy and PaddingPolicy overrides |
+| Block | A reusable run of slots, like "Saturday morning cartoons" | slots\[\] with show or show-type picks, BreakPolicy and PaddingPolicy overrides |
 | Calendar rule | When a block airs | channel, days of week, time range, date range or season, holiday ref, priority |
 | Holiday | A named date | fixed date (Dec 25), rule (4th Thu Nov), or offset (Easter + 0), plus lead-in days |
 | Channel | One ErsatzTV Next channel | number, playout folder path, default policies, graphics (network bug), build horizon |
 | MediaSource | A Plex server, Jellyfin server, or local folder root | kind, URL, token reference, enabled libraries, path mapping rules, playback mode (direct path or HTTP), last sync time |
+| Play | One airing of one item, recorded by every build | item, channel, aired\_at, break or slot it filled; drives cooldowns, no-repeat rules, and shuffle cycles |
 
 **Policy inheritance:** Channel defaults, then ShowType, then Show, then Block slot. The most specific setting wins. A single setting like "late-night shows get 4 breaks" lives on the ShowType, not on every show.
 
@@ -142,7 +167,7 @@ Everything the engine schedules is a media item with tags. Rules decide which ta
 The engine builds a channel one day at a time in five passes, then writes a playout file. Each pass only adds detail, so a failure points at one stage.
 
 1. **Resolve the day.** For each channel and date, collect calendar rules that match: holiday, then date range or season, then day of week, then the channel default. Higher priority wins per time range, and the result is a list of Blocks with start times.
-2. **Fill slots.** For each slot in each Block, pick the show or episode. Advance rotation state and apply show-type filters. Record the episode's content length.
+2. **Fill slots.** For each slot in each Block, pick the show or episode. Pick by the show's order mode: the next episode by air date in chronological mode, or the next draw from the current no-repeat cycle in shuffle mode. Advance rotation state and apply show-type filters. Record the episode's content length.
 3. **Plan breaks.** Turn each episode into acts. Choose cut points from chapter markers that respect min act length and max breaks. Without chapters, fall back per BreakPolicy. Add pre-roll and post-roll break positions.
 4. **Compute the pad.** Snap the slot end to the PaddingPolicy boundary and get the total break time to fill. Split it across break positions, weighted so mid-show breaks get more than pre-roll.
 5. **Fill breaks.** For each break, wrap with bumpers, then pick ads from the show type's pools until the break's budget is nearly used. Close any remainder with filler, then a lavfi slate for the last frames.
@@ -175,10 +200,10 @@ The scanner fills the catalog once and refreshes on change. The engine reads the
 
 | Decision | Recommendation | Reason |
 | --- | --- | --- |
-| Language | Rust | Next's `ersatztv-playout` crate already models the playout JSON. Reusing it keeps the scheduler in sync with schema changes. |
+| Language | C# / .NET 10 | Decided Oct 10, 2026: C# on .NET 10. It ships as self-contained single-file binaries for Windows, Linux, and macOS plus a Docker image, the same way Next and legacy ErsatzTV ship. Legacy ErsatzTV is C#, so its community and its Plex and Jellyfin code are familiar. Rust was the first pick but needs a toolchain install and slows the web UI later. |
 | Chapter and duration extraction | `ffprobe -show_chapters -show_format -show_streams` | Used for local folders and for Plex or Jellyfin items missing chapters. Plex and Jellyfin items take chapters and markers from the server API first. Results are cached in the catalog and passed to Next as a probe hint. |
 | Config format | YAML files in a folder | Readable, diffable, and easy to keep in git. The web UI edits the same files later. |
-| State storage | SQLite | Holds the media catalog, episode rotation position, and recent ad plays for no-repeat rules. |
+| State storage | SQLite | The catalog is the organizing model: media facts, tags, parsed episode data, plays, and rotation state. Pools are queries over it. One file, easy to back up, no server to run. |
 | Build trigger | Nightly job plus on-demand rebuild | Keeps a rolling horizon of playout files, such as 3 days ahead. |
 | Output | One playout file per channel per day, named per the schema | Matches Next's lookup by current time. Writing to a temp name and renaming keeps Next from reading a half-written file. |
 
@@ -194,8 +219,8 @@ No dates are set yet. Each phase starts only when the previous exit gate passes.
 
 **Open questions**
 
-- [ ] Where does Next get XMLTV titles? Playout items have no title field in schema 0.0.6. Ask on the ErsatzTV Matrix or Discord, or read the `ersatztv` crate.
-- [ ] Where do the values for Next's placeholder tokens in HTTP source URLs come from, such as environment variables or a secrets file? This decides how Plex and Jellyfin tokens are stored for HTTP playback.
+- [x] Closed Oct 10, 2026: Next reads guide data from one XMLTV file per channel, named by the channel's tvg\_id, in the lineup's xmltv folder. It copies the programme elements as-is, so the scheduler writes titles, descriptions, categories, and episode numbers itself.
+- [x] Closed Oct 10, 2026: Next expands placeholder tokens in HTTP source URLs and headers from environment variables at playback. Plex and Jellyfin tokens for HTTP playback go in Next's environment, never in playout files.
 - [ ] How much overlap with legacy ErsatzTV is acceptable? Legacy ErsatzTV already has filler and mid-roll features. Decide whether this tool replaces it or targets users who run Next standalone.
 - [ ] How long a window per playout file: one day, or a rolling 48 hours? This affects how quickly rule edits reach the air.
 - [ ] Should ad picks happen at build time, or at air time through a dynamic source? Build time is simpler and previewable.
