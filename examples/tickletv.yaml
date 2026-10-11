@@ -1,0 +1,43 @@
+# Tickle TV Scheduler config. Paths are relative to this file.
+
+catalog: tickletv.sqlite
+
+next:
+  # Next's lineup.json. Channel playout folders and the xmltv folder are read from it.
+  lineup: C:\ErsatzTV Next\config\lineup.json
+  # Highest playout schema the running Next accepts: 0.0.5 for Next 0.2.0, 0.0.4 for legacy ErsatzTV's engine.
+  schema_version: 0.0.5
+
+channels:
+  - number: "1"
+    name: Tickle TV
+    tvg_id: tickle.1
+    horizon_hours: 24
+
+    defaults:
+      pad: 30            # 30, 60, 5, 10, or none: snap each show's end to this boundary
+      max_breaks: 3
+      min_act_seconds: 120
+      pre_roll: false
+      post_roll: true
+
+    ads:
+      # Pool query. Terms join with AND; prefix a term with NOT to exclude.
+      #   kind = commercial | tag:kids | show = TNG | year between 1988 and 1994 | era within 3 | duration <= 60s
+      pool: kind = commercial AND era within 6
+      cooldown_minutes: 90
+      max_repeats_per_break: 1
+
+    # Daily grid. Each slot airs episodes of its show back to back until the next slot starts.
+    schedule:
+      - time: "06:00"
+        show: The Simpsons
+        order: shuffle          # every episode once before any repeats
+      - time: "20:00"
+        show: TNG
+        order: chronological    # by original air date, wrapping at the end
+        pad: 60
+        max_breaks: 4
+      - time: "23:00"
+        show: The Simpsons
+        order: shuffle

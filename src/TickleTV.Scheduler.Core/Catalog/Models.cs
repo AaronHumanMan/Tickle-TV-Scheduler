@@ -8,6 +8,8 @@ public enum MediaKind
     Commercial,
     Bumper,
     Filler,
+    /// <summary>Recognised but not airable as anything: credits, titles, clips marked "not an advert".</summary>
+    Other,
 }
 
 /// <summary>Who decided a classification: a person always wins over a rule.</summary>

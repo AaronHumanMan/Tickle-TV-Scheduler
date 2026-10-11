@@ -15,6 +15,7 @@ public sealed record SpikeRequest
     public IReadOnlyList<FillerClip> Ads { get; init; } = [];
     public BreakPolicy BreakPolicy { get; init; } = new();
     public PaddingPolicy PaddingPolicy { get; init; } = new();
+    public int MaxRepeatsPerBreak { get; init; } = 2;
 }
 
 public sealed record SpikeResult
@@ -57,7 +58,7 @@ public static class SpikeBuilder
         var items = new List<PlayoutItem>();
         var cursor = req.Start;
         int breakIndex = 0;
-        var filler = new BreakFiller(req.Ads);
+        var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak) };
 
         if (req.BreakPolicy.PreRoll)
             cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, warnings);

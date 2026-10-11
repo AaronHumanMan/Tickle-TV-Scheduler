@@ -11,6 +11,7 @@ public sealed class CatalogDb : IDisposable
 {
     private const int CurrentSchema = 1;
     private readonly SqliteConnection _conn;
+    private SqliteTransaction? _tx;
 
     public CatalogDb(string path)
     {
@@ -288,7 +289,26 @@ public sealed class CatalogDb : IDisposable
 
     // ---- plumbing ----
 
-    public SqliteTransaction BeginTransaction() => _conn.BeginTransaction();
+    /// <summary>Starts a unit of work. A build runs inside one so a dry run can roll back rotation and plays.</summary>
+    public void BeginWork()
+    {
+        if (_tx is not null) throw new InvalidOperationException("Work already in progress.");
+        _tx = _conn.BeginTransaction();
+    }
+
+    public void CommitWork()
+    {
+        _tx?.Commit();
+        _tx?.Dispose();
+        _tx = null;
+    }
+
+    public void RollbackWork()
+    {
+        _tx?.Rollback();
+        _tx?.Dispose();
+        _tx = null;
+    }
 
     private static MediaItem ReadItem(SqliteDataReader r) => new()
     {
@@ -332,7 +352,7 @@ public sealed class CatalogDb : IDisposable
     private void Exec(string sql, SqliteTransaction? tx = null, params (string, object?)[] args)
     {
         using SqliteCommand cmd = _conn.CreateCommand();
-        cmd.Transaction = tx;
+        cmd.Transaction = tx ?? _tx;
         cmd.CommandText = sql;
         foreach ((string name, object? value) in args) cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
         cmd.ExecuteNonQuery();
@@ -341,6 +361,7 @@ public sealed class CatalogDb : IDisposable
     private T Scalar<T>(string sql, params (string, object?)[] args)
     {
         using SqliteCommand cmd = _conn.CreateCommand();
+        cmd.Transaction = _tx;
         cmd.CommandText = sql;
         foreach ((string name, object? value) in args) cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
         object? result = cmd.ExecuteScalar();
@@ -351,6 +372,7 @@ public sealed class CatalogDb : IDisposable
     private List<T> Query<T>(string sql, Func<SqliteDataReader, T> map, params (string, object?)[] args)
     {
         using SqliteCommand cmd = _conn.CreateCommand();
+        cmd.Transaction = _tx;
         cmd.CommandText = sql;
         foreach ((string name, object? value) in args) cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
         using SqliteDataReader reader = cmd.ExecuteReader();

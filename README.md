@@ -4,7 +4,7 @@ Broadcast-style scheduling for [ErsatzTV Next](https://github.com/ErsatzTV/next)
 
 Next streams the channels. This tool decides what airs, when, and with which breaks, then writes Next's playout JSON and XMLTV guide files.
 
-Status: Phase 0 spike. See the planning doc in this repo for the full design.
+Status: Phase 1 in progress. A catalog, a YAML channel config with a daily grid, episode order modes, ad pools with cooldown, and a `build` command that writes rolling windows all work against a real Next. See the planning doc in this repo for the full design.
 
 ## Requirements
 
@@ -65,6 +65,20 @@ What the scan understands:
 - Technical suffixes such as `(480p_30fps_H264-128kbit_AAC)` are ignored.
 
 A rescan probes only new or changed files. A file that moved or was renamed keeps its tags and play history, because items are keyed by content, not path. Deleted files are marked missing rather than dropped.
+
+## Build a channel
+
+Copy `examples/tickletv.yaml`, point it at your catalog and Next's `lineup.json`, and describe the daily grid. Each slot airs episodes of its show back to back, each padded to its boundary, until the next slot starts.
+
+```
+dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml --dry-run
+dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
+```
+
+- `order: chronological` follows original air date (season and episode as fallback) and wraps. `order: shuffle` airs every episode once before any repeats. Position is remembered per show and channel across builds.
+- `ads.pool` is a query over the catalog: `kind = commercial AND era within 3 AND NOT tag:late-night`. `ads.cooldown_minutes` keeps a clip off air after it plays.
+- A rebuild replaces every playout window from its start time forward and merges the guide, so config edits reach the air on the next build. `--dry-run` prints the plan and changes nothing, including rotation state.
+- `parse <folder>` shows how files would be classified without probing or writing anything.
 
 ## Layout
 

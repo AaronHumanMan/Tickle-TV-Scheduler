@@ -6,5 +6,7 @@ root.Subcommands.Add(ProbeCommand.Create());
 root.Subcommands.Add(SpikeCommand.Create());
 root.Subcommands.Add(ScanCommand.Create());
 root.Subcommands.Add(CatalogCommand.Create());
+root.Subcommands.Add(BuildCommand.Create());
+root.Subcommands.Add(ParseCommand.Create());
 
 return await root.Parse(args).InvokeAsync();

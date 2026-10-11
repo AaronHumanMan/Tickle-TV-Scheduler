@@ -158,6 +158,7 @@ public sealed class Scanner
             _db.AddTag(id, $"{y / 10 * 10}s", FactSource.Filename);
         }
         if (parsed.Show is not null) _db.AddTag(id, $"show:{parsed.Show}", parsed.ShowSource ?? FactSource.Filename);
+        foreach (string tag in parsed.Tags) _db.AddTag(id, tag, FactSource.Filename);
     }
 
     private static MediaItem ToItem(string path, long size, DateTimeOffset modified, string hash, MediaProbe probe, ParsedName parsed, DateTimeOffset now)
