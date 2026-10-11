@@ -111,6 +111,7 @@ public static class InitCommand
               before_break: true
               after_break: true
               min_ad_seconds: 15
+              placement: show_edges  # or every_break
 
             filler:
               pool: kind = filler

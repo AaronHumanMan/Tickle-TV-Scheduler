@@ -132,6 +132,16 @@ public sealed class BumpersConfig
     public string? AfterTag { get; set; }
     /// <summary>Leave at least this many seconds of ads in a break; bumpers are skipped when they would crowd ads out.</summary>
     public int MinAdSeconds { get; set; } = 15;
+    /// <summary>show_edges (default): one bumper before the show and one after it. every_break: bumpers around the ads in every break.</summary>
+    public string Placement { get; set; } = "show_edges";
+
+    [YamlIgnore]
+    public BumperPlacement PlacementMode => Placement.Trim().ToLowerInvariant() switch
+    {
+        "show_edges" or "edges" or "show" => BumperPlacement.ShowEdges,
+        "every_break" or "breaks" or "all" => BumperPlacement.EveryBreak,
+        _ => throw new InvalidDataException($"Unknown bumper placement '{Placement}'. Use show_edges or every_break."),
+    };
 }
 
 public sealed class SlotDefaults

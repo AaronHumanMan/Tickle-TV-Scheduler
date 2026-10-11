@@ -38,6 +38,7 @@ channels:
       # before_tag: break-out
       # after_tag: break-in
       min_ad_seconds: 15       # skip bumpers when a break is too short for them plus ads
+      placement: show_edges    # one bumper before the show and one after it; every_break puts them around every break
 
     filler:
       pool: kind = filler      # covers whatever ads can't fill, looping; without it gaps are black

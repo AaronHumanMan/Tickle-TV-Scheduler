@@ -14,6 +14,8 @@ public sealed record BuildOptions
     public DateTimeOffset? From { get; init; }
     /// <summary>Overrides every channel's horizon.</summary>
     public int? Hours { get; init; }
+    /// <summary>The most that can be built at once.</summary>
+    public const int MaxDays = 30;
     /// <summary>Build only this channel number.</summary>
     public string? Channel { get; init; }
     /// <summary>Plan only: write nothing, change no state.</summary>
@@ -71,7 +73,8 @@ public static class BuildRunner
             (DateTimeOffset cut, Playout.Playout? carried, string? carriedFile) = FindCutIn(playoutFolder, xmltvPath, start);
             int carriedCount = carried?.Items.Count(i => i.Finish <= cut) ?? 0;
 
-            DateTimeOffset until = cut.AddHours(options.Hours ?? ch.HorizonHours);
+            int hours = Math.Clamp(options.Hours ?? ch.HorizonHours, 1, BuildOptions.MaxDays * 24);
+            DateTimeOffset until = cut.AddHours(hours);
             log?.Invoke($"== Channel {ch.Number} ({ch.Name}) {cut:yyyy-MM-dd HH:mm} to {until:yyyy-MM-dd HH:mm}{(options.DryRun ? " [dry run]" : "")}");
             if (cut != start) log?.Invoke($"   (joining at the end of the programme on air; {carriedCount} earlier items carried over)");
 

@@ -106,3 +106,5 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .job .log { max-height: 260px; overflow: auto; font-size: 0.85rem; }
 .job .warnings { color: #8a5a00; }
 .table.compact td, .table.compact th { padding: 6px 10px; font-size: 0.95rem; }
+.days { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.days input { width: 80px; font-size: 1rem; padding: 6px 8px; border: 1px solid #c9d3ea; border-radius: 8px; }

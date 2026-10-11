@@ -56,9 +56,13 @@ public sealed class BreakFiller
         {
             int size = (int)((clip.DurationMs + ResolutionMs - 1) / ResolutionMs); // round up: never overshoot
             if (size <= 0 || size > units) continue;
-            long baseCost = _plays.GetValueOrDefault(clip.Path) + 1;
+            // Cost favours typical 30-second spots: a 2-minute clip costs far more than four 30-second ones,
+            // so a break fills with several commercials rather than one long one. Prior plays raise the cost too.
+            double seconds = clip.DurationMs / 1000.0;
+            long lengthCost = (long)Math.Round(100 * (1 + Math.Pow(seconds / 30.0, 2)) / 2);
+            long baseCost = (_plays.GetValueOrDefault(clip.Path) + 1) * lengthCost;
             for (int r = 0; r < MaxRepeatsPerBreak; r++)
-                items.Add((clip, size, baseCost + r * RepeatPenalty));
+                items.Add((clip, size, baseCost + r * RepeatPenalty * lengthCost));
         }
         if (items.Count == 0) return [];
 

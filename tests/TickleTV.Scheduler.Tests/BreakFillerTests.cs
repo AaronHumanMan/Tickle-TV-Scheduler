@@ -71,6 +71,17 @@ public class BreakFillerTests
     }
 
     [Fact]
+    public void Prefers_several_typical_spots_over_one_long_clip()
+    {
+        var clips = Enumerable.Range(0, 8).Select(i => new FillerClip($"/ads/thirty{i}.mp4", 30_000)).Append(new FillerClip("/ads/long.mp4", 120_000)).ToList();
+        FillResult r = new BreakFiller(clips) { MaxRepeatsPerBreak = 1 }.Fill(120_000);
+
+        Assert.Equal(0, r.RemainderMs);
+        Assert.Equal(4, r.Clips.Count);
+        Assert.DoesNotContain(r.Clips, c => c.Path == "/ads/long.mp4");
+    }
+
+    [Fact]
     public void Never_leaves_a_slate_shorter_than_two_seconds()
     {
         // 30 + 15 + 10 = 55 s against a 55.3 s budget would leave a 300 ms slate, which ffmpeg rejects.

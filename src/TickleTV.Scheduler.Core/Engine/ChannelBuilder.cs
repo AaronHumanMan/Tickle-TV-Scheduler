@@ -290,6 +290,7 @@ public sealed class ChannelBuilder
             Before = Pick(cfg.BeforeBreak, cfg.BeforeTag),
             After = Pick(cfg.AfterBreak, cfg.AfterTag),
             MinAdMs = cfg.MinAdSeconds * 1000L,
+            Placement = cfg.PlacementMode,
         };
     }
 

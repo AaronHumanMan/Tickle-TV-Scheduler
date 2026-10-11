@@ -7,13 +7,23 @@ namespace TickleTV.Scheduler.Core.Engine;
 /// <summary>A short clip (ad, bumper, filler) available to fill breaks.</summary>
 public sealed record FillerClip(string Path, long DurationMs);
 
-/// <summary>Bumpers that bracket a break: one before the ads, one after. Either list may be empty.</summary>
+/// <summary>Where bumpers go in a show's slot.</summary>
+public enum BumperPlacement
+{
+    /// <summary>One bumper right before the show starts and one right after it ends; mid-show breaks hold only commercials.</summary>
+    ShowEdges,
+    /// <summary>A bumper before and after the ads in every break.</summary>
+    EveryBreak,
+}
+
+/// <summary>Bumpers for a slot. Either list may be empty.</summary>
 public sealed record BumperSet
 {
     public IReadOnlyList<FillerClip> Before { get; init; } = [];
     public IReadOnlyList<FillerClip> After { get; init; } = [];
     /// <summary>Bumpers are skipped when they would leave less than this for ads.</summary>
     public long MinAdMs { get; init; } = 15_000;
+    public BumperPlacement Placement { get; init; } = BumperPlacement.ShowEdges;
 }
 
 public sealed record SpikeRequest
@@ -76,17 +86,35 @@ public static class SpikeBuilder
             breakCount = 1;
         }
 
-        long[] budgets = SplitBudget(padMs, breakCount, req.BreakPolicy.PreRoll);
-
         var items = new List<PlayoutItem>();
         var cursor = req.Start;
         int breakIndex = 0;
         var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak) };
         var bumpers = new BumperRotation(req.Bumpers);
         var gaps = new GapFiller(req.Filler);
+        bool edgeBumpers = req.Bumpers.Placement == BumperPlacement.ShowEdges;
+
+        // Show-edge bumpers come out of the pad before it is split across the breaks.
+        FillerClip? intro = null, outro = null;
+        if (edgeBumpers && padMs > 0)
+        {
+            intro = bumpers.NextBefore(padMs);
+            long afterIntro = padMs - (intro?.DurationMs ?? 0);
+            outro = bumpers.NextAfter(afterIntro);
+            padMs = afterIntro - (outro?.DurationMs ?? 0);
+        }
+
+        long[] budgets = SplitBudget(padMs, breakCount, req.BreakPolicy.PreRoll);
+        int bumperNo = 0;
 
         if (req.BreakPolicy.PreRoll)
-            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings);
+            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings, withBumpers: !edgeBumpers);
+
+        if (intro is not null)
+        {
+            items.Add(Clip($"bumper-{++bumperNo}", cursor, intro));
+            cursor = cursor.AddMilliseconds(intro.DurationMs);
+        }
 
         for (int i = 0; i < acts.Count; i++)
         {
@@ -106,10 +134,15 @@ public static class SpikeBuilder
             cursor = cursor.AddMilliseconds(act.DurationMs);
 
             bool isLast = i == acts.Count - 1;
+            if (isLast && outro is not null)
+            {
+                items.Add(Clip($"bumper-{++bumperNo}", cursor, outro));
+                cursor = cursor.AddMilliseconds(outro.DurationMs);
+            }
             if (!isLast || req.BreakPolicy.PostRoll || (breakCount == 1 && midBreaks == 0 && !req.BreakPolicy.PreRoll))
             {
                 if (breakIndex < budgets.Length)
-                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings);
+                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings, withBumpers: !edgeBumpers);
             }
         }
 
@@ -164,16 +197,16 @@ public static class SpikeBuilder
     }
 
     private static DateTimeOffset EmitBreak(
-        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, BumperRotation bumpers, GapFiller gaps, List<string> warnings)
+        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, BumperRotation bumpers, GapFiller gaps, List<string> warnings, bool withBumpers = true)
     {
         if (budgetMs <= 0) return cursor;
         int n = items.Count(i => i.Id.StartsWith("ad-")) + 1;
         int b = items.Count(i => i.Id.StartsWith("bumper-")) + 1;
 
         // Bumpers first: reserve them only when enough remains for ads.
-        FillerClip? before = bumpers.NextBefore(budgetMs);
+        FillerClip? before = withBumpers ? bumpers.NextBefore(budgetMs) : null;
         long afterBefore = budgetMs - (before?.DurationMs ?? 0);
-        FillerClip? after = bumpers.NextAfter(afterBefore);
+        FillerClip? after = withBumpers ? bumpers.NextAfter(afterBefore) : null;
         long adBudget = afterBefore - (after?.DurationMs ?? 0);
 
         if (before is not null)

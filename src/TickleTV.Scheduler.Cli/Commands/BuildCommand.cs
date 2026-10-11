@@ -12,14 +12,15 @@ public static class BuildCommand
     {
         var config = ConfigLocator.ConfigOption();
         var from = new Option<string?>("--from") { Description = "Window start, ISO 8601 (default: next whole minute)." };
-        var hours = new Option<int?>("--hours") { Description = "Override every channel's horizon." };
+        var hours = new Option<int?>("--hours") { Description = "Override every channel's horizon in hours." };
+        var days = new Option<int?>("--days") { Description = $"How many days to build, 1 to {BuildOptions.MaxDays}." };
         var channel = new Option<string?>("--channel") { Description = "Build only this channel number." };
         var dryRun = new Option<bool>("--dry-run") { Description = "Print the plan, write nothing, change no state." };
         var seed = new Option<int?>("--seed") { Description = "Random seed for shuffle order (reproducible builds)." };
         var fresh = new Option<bool>("--fresh") { Description = "Ignore the episodes the existing window already assigned and pick again from the rotation." };
 
         var cmd = new Command("build", "Build playout windows for all channels and write them for Next.");
-        foreach (Option o in new Option[] { config, from, hours, channel, dryRun, seed, fresh }) cmd.Options.Add(o);
+        foreach (Option o in new Option[] { config, from, hours, days, channel, dryRun, seed, fresh }) cmd.Options.Add(o);
 
         cmd.SetAction(p =>
         {
@@ -27,7 +28,7 @@ public static class BuildCommand
             var options = new BuildOptions
             {
                 From = p.GetValue(from) is { } f ? DateTimeOffset.Parse(f, CultureInfo.InvariantCulture) : null,
-                Hours = p.GetValue(hours),
+                Hours = p.GetValue(days) is { } d ? Math.Clamp(d, 1, BuildOptions.MaxDays) * 24 : p.GetValue(hours),
                 Channel = p.GetValue(channel),
                 DryRun = p.GetValue(dryRun),
                 Seed = p.GetValue(seed),
