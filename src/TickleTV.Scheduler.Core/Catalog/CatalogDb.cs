@@ -274,6 +274,8 @@ public sealed class CatalogDb : IDisposable
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'brand:%')
                  AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = 'brand-not-needed') THEN 'NoBrand'
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%') THEN 'NoCategory'
+            WHEN m.kind = 'Bumper' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ('promo', 'station-id', 'bumper')) THEN 'BumperUnsorted'
+            WHEN m.kind = 'Episode' AND (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) <= 1 THEN 'NoChapters'
         END
         """;
 
@@ -285,8 +287,8 @@ public sealed class CatalogDb : IDisposable
                 FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
                 WHERE m.missing_utc IS NULL
             )
-            WHERE reason IS NOT NULL AND (@only IS NULL OR reason = @only)
-            ORDER BY CASE reason WHEN 'Unknown' THEN 0 WHEN 'EpisodeDetails' THEN 1 WHEN 'NoCategory' THEN 2 ELSE 3 END, path
+            WHERE reason IS NOT NULL AND ((@only IS NULL AND reason <> 'NoChapters') OR reason = @only)
+            ORDER BY CASE reason WHEN 'Unknown' THEN 0 WHEN 'EpisodeDetails' THEN 1 WHEN 'BumperUnsorted' THEN 2 WHEN 'NoCategory' THEN 3 WHEN 'NoBrand' THEN 4 ELSE 5 END, path
             LIMIT @limit OFFSET @offset
             """, r => (r.GetInt64(0), r.GetString(1)), ("@only", only?.ToString()), ("@limit", limit), ("@offset", offset));
         return rows.Select(r => (GetEntry(r.Item1)!, Enum.Parse<AttentionReason>(r.Item2))).ToList();

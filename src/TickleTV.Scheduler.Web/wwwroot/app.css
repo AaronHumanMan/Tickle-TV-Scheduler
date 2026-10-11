@@ -82,3 +82,10 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .search-add input { flex: 1; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; }
 .inline-form { display: flex; gap: 8px; align-items: center; }
 .inline-form input { flex: 1; max-width: 420px; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; }
+
+.select-bar { display: flex; gap: 10px; align-items: center; margin: 6px 0 12px; }
+.item .pick { display: flex; align-items: flex-start; padding-top: 4px; }
+.item .pick input { width: 20px; height: 20px; }
+.item .grow { flex: 1; }
+.item.picked { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(36, 87, 197, 0.15); }
+.card.bulk { border-color: var(--accent); background: #f3f7ff; position: sticky; top: 8px; z-index: 10; }

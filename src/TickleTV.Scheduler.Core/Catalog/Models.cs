@@ -75,4 +75,8 @@ public enum AttentionReason
     NoBrand,
     /// <summary>A commercial with no category label.</summary>
     NoCategory,
+    /// <summary>A bumper that is not marked as a promo, a station ID, or a break bumper.</summary>
+    BumperUnsorted,
+    /// <summary>An episode with no chapter marks, so breaks fall back to even spacing. Low priority; its own filter.</summary>
+    NoChapters,
 }

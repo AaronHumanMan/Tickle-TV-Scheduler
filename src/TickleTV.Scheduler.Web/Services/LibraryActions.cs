@@ -91,6 +91,10 @@ public sealed class LibraryActions
                 }
             }
 
+            // A bumper has one role; picking one replaces the others.
+            if (c.Kind == MediaKind.Bumper && c.ExtraLabels.Trim() is "promo" or "station-id" or "bumper")
+                foreach (string role in new[] { "promo", "station-id", "bumper" }) db.RemoveTag(itemId, role);
+
             foreach (string label in c.ExtraLabels.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 db.AddTag(itemId, label, FactSource.Manual);
@@ -117,6 +121,8 @@ public sealed class LibraryActions
         AttentionReason.EpisodeDetails => "This looks like a TV episode but I'm missing the show name, season, or episode number.",
         AttentionReason.NoBrand => "This commercial has no brand label yet.",
         AttentionReason.NoCategory => "This commercial has no category yet.",
+        AttentionReason.BumperUnsorted => "This is in a bumper folder, but I can't tell if it's a station ID, a break card, or a promo for a show.",
+        AttentionReason.NoChapters => "This episode has no chapter marks, so commercial breaks will be spaced evenly instead of between scenes. Nothing to fix here unless you want to add chapters to the file.",
         _ => "",
     };
 
@@ -126,6 +132,38 @@ public sealed class LibraryActions
         AttentionReason.EpisodeDetails => "Episode details missing",
         AttentionReason.NoBrand => "Commercials without a brand",
         AttentionReason.NoCategory => "Commercials without a category",
+        AttentionReason.BumperUnsorted => "Bumpers I couldn't sort",
+        AttentionReason.NoChapters => "Episodes without chapter marks",
         _ => reason.ToString(),
     };
+
+    /// <summary>
+    /// Applies one set of answers to many files. Fields left blank keep each file's current value.
+    /// For episodes, <paramref name="numberFrom"/> assigns episode numbers in list order starting there.
+    /// </summary>
+    public string ApplyBulk(IReadOnlyList<long> itemIds, LabelChoice c, int? numberFrom)
+    {
+        int done = 0;
+        int next = numberFrom ?? 0;
+        foreach (long id in itemIds)
+        {
+            CatalogEntry? current = _catalog.Run(db => db.GetEntry(id));
+            if (current is null) continue;
+            var per = new LabelChoice
+            {
+                Kind = c.Kind == MediaKind.Unknown ? current.Item.Kind : c.Kind,
+                Show = string.IsNullOrWhiteSpace(c.Show) ? current.Episode?.Show ?? "" : c.Show,
+                Season = c.Season ?? current.Episode?.Season,
+                Episode = numberFrom is not null ? next++ : current.Episode?.Episode,
+                EpisodeTitle = current.Episode?.EpisodeTitle ?? (current.Item.Title ?? ""),
+                Brand = c.Brand,
+                BrandNotNeeded = c.BrandNotNeeded,
+                Category = c.Category,
+                ExtraLabels = c.ExtraLabels,
+            };
+            Apply(id, per);
+            done++;
+        }
+        return $"Saved {done} file{(done == 1 ? "" : "s")}.";
+    }
 }
