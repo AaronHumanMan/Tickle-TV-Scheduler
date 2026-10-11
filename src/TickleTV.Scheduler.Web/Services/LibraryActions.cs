@@ -85,6 +85,7 @@ public sealed class LibraryActions
                 if (!string.IsNullOrWhiteSpace(c.Category))
                 {
                     foreach (Tag t in current.Tags.Where(t => t.Name.StartsWith("category:"))) db.RemoveTag(itemId, t.Name);
+                    db.AddCategory(c.Category);
                     db.AddTag(itemId, "category:" + CatalogDb.NormalizeTag(c.Category), FactSource.Manual);
                     saved.Add($"category {c.Category.Trim()}");
                 }

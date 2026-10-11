@@ -1,0 +1,116 @@
+@* A dropdown you can type into. Shows the choices that contain what you typed, and an "Add ..." row at the end. *@
+
+<div class="search-select" @onfocusout="OnBlur">
+    <input class="search-input"
+           value="@Text"
+           placeholder="@Placeholder"
+           @oninput="OnInput"
+           @onfocus="() => open = true"
+           @onkeydown="OnKey" />
+    @if (open)
+    {
+        <ul class="search-list">
+            @foreach (var option in Matches)
+            {
+                <li class="@(option == Value ? "selected" : "")" @onmousedown="() => Choose(option)">@option</li>
+            }
+            @if (Matches.Count == 0)
+            {
+                <li class="empty">No match for "@Text"</li>
+            }
+            <li class="add" @onmousedown="StartAdd">@AddLabel</li>
+        </ul>
+    }
+    @if (adding)
+    {
+        <div class="search-add">
+            <input @bind="newName" placeholder="@AddPlaceholder" @onkeydown="OnAddKey" />
+            <button type="button" class="button primary" @onclick="ConfirmAdd">Add</button>
+            <button type="button" class="button secondary" @onclick="() => adding = false">Cancel</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Options { get; set; } = [];
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Type to search";
+    [Parameter] public string AddLabel { get; set; } = "Add new…";
+    [Parameter] public string AddPlaceholder { get; set; } = "New name";
+    /// <summary>Called with the new name; the parent persists it and returns the display value to select.</summary>
+    [Parameter] public Func<string, Task<string>>? OnAdd { get; set; }
+
+    private string Text = "";
+    private bool open;
+    private bool adding;
+    private string newName = "";
+
+    protected override void OnParametersSet()
+    {
+        if (!open) Text = Value;
+    }
+
+    private IReadOnlyList<string> Matches =>
+        string.IsNullOrWhiteSpace(Text)
+            ? Options.Take(40).ToList()
+            : Options.Where(o => o.Contains(Text, StringComparison.OrdinalIgnoreCase)).Take(40).ToList();
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        Text = e.Value?.ToString() ?? "";
+        open = true;
+    }
+
+    private async Task Choose(string option)
+    {
+        Text = option;
+        open = false;
+        await ValueChanged.InvokeAsync(option);
+    }
+
+    private void StartAdd()
+    {
+        adding = true;
+        open = false;
+        newName = Text;
+    }
+
+    private async Task ConfirmAdd()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        string chosen = OnAdd is null ? newName.Trim() : await OnAdd(newName.Trim());
+        adding = false;
+        await Choose(chosen);
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            var first = Matches.FirstOrDefault(m => string.Equals(m, Text, StringComparison.OrdinalIgnoreCase)) ?? Matches.FirstOrDefault();
+            if (first is not null) await Choose(first);
+            else StartAdd();
+        }
+        else if (e.Key == "Escape")
+        {
+            open = false;
+        }
+    }
+
+    private async Task OnAddKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ConfirmAdd();
+    }
+
+    private void OnBlur()
+    {
+        // Give a click in the list time to register before closing.
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(150);
+            open = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}

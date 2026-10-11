@@ -70,3 +70,15 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 
 .glossary dt { font-weight: 600; margin-top: 10px; }
 .glossary dd { margin: 2px 0 0; color: #3b4252; }
+
+.search-select { position: relative; }
+.search-select .search-input { width: 100%; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; background: #fff; }
+.search-list { position: absolute; z-index: 20; left: 0; right: 0; margin: 4px 0 0; padding: 4px 0; list-style: none; background: #fff; border: 1px solid #c9d3ea; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 60, 0.12); max-height: 260px; overflow-y: auto; }
+.search-list li { padding: 8px 12px; cursor: pointer; }
+.search-list li:hover, .search-list li.selected { background: #e9f1ff; }
+.search-list li.empty { color: var(--muted); cursor: default; }
+.search-list li.add { border-top: 1px solid var(--line); color: var(--accent); font-weight: 600; }
+.search-add { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.search-add input { flex: 1; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; }
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input { flex: 1; max-width: 420px; font-size: 1rem; padding: 8px 10px; border: 1px solid #c9d3ea; border-radius: 8px; }

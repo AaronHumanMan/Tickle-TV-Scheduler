@@ -79,10 +79,13 @@
                 </label>
                 <label class="check"><input type="checkbox" @bind="choice.BrandNotNeeded" /> There is no brand to name</label>
                 <label>Category
-                    <input list="categories" @bind="choice.Category" placeholder="e.g. Food, Cars, Toys" />
-                    <datalist id="categories">
-                        @foreach (string c in categories) { <option value="@c" /> }
-                    </datalist>
+                    <SearchSelect Options="categories"
+                                  Value="@choice.Category"
+                                  ValueChanged="@(v => choice.Category = v)"
+                                  Placeholder="Type to search, e.g. Food, Cars, Toys"
+                                  AddLabel="＋ Add a category…"
+                                  AddPlaceholder="New category name"
+                                  OnAdd="AddCategory" />
                 </label>
             }
 
@@ -118,7 +121,7 @@
         counts = Catalog.Run(db => db.CountNeedingAttention());
         items = Catalog.Run(db => db.ListNeedingAttention(filter, PageSize)).ToList();
         shows = Catalog.Run(db => db.ListShows());
-        categories = Catalog.Run(db => db.ListTagValues("category:"));
+        categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
         choices.Clear();
     }
 
@@ -137,6 +140,14 @@
             choices[id] = c;
         }
         return c;
+    }
+
+    private Task<string> AddCategory(string name)
+    {
+        Catalog.Run(db => db.AddCategory(name));
+        categories = Catalog.Run(db => db.ListCategories()).Select(c => c.Name).ToList();
+        notice = $"Added the category \"{name.Trim()}\". It is now a choice for every commercial.";
+        return Task.FromResult(name.Trim());
     }
 
     private void Watch(string path) => notice = Opener.Open(path) ?? $"Opened {Path.GetFileName(path)} in your video player.";

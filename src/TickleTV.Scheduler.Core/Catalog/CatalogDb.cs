@@ -9,7 +9,7 @@ namespace TickleTV.Scheduler.Core.Catalog;
 /// </summary>
 public sealed class CatalogDb : IDisposable
 {
-    private const int CurrentSchema = 1;
+    private const int CurrentSchema = 2;
     private readonly SqliteConnection _conn;
     private SqliteTransaction? _tx;
 
@@ -100,6 +100,16 @@ public sealed class CatalogDb : IDisposable
                     next_position INTEGER,
                     cycle_json TEXT,
                     PRIMARY KEY (show, channel)
+                );
+                """, tx);
+        }
+        if (version < 2)
+        {
+            Exec("""
+                CREATE TABLE categories (
+                    slug TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    created_utc TEXT NOT NULL
                 );
                 """, tx);
         }
@@ -310,6 +320,34 @@ public sealed class CatalogDb : IDisposable
             result[Enum.Parse<MediaKind>(kind)] = (int)n;
         return result;
     }
+
+    // ---- categories ----
+
+    /// <summary>A commercial category a person can pick from. Slugs match the category:... tags.</summary>
+    public sealed record Category(string Slug, string Name, int Items);
+
+    public void AddCategory(string name)
+    {
+        string slug = NormalizeTag(name);
+        if (slug.Length == 0) return;
+        Exec("INSERT INTO categories (slug, name, created_utc) VALUES (@s, @n, @c) ON CONFLICT(slug) DO NOTHING", null,
+            ("@s", slug), ("@n", name.Trim()), ("@c", Iso(DateTimeOffset.UtcNow)));
+    }
+
+    public void RemoveCategory(string slug) =>
+        Exec("DELETE FROM categories WHERE slug = @s", null, ("@s", NormalizeTag(slug)));
+
+    /// <summary>Every category: the ones people added plus the ones the scan derived from folders, with item counts.</summary>
+    public IReadOnlyList<Category> ListCategories() =>
+        Query("""
+            SELECT slug, name, (SELECT COUNT(*) FROM tags t WHERE t.tag = 'category:' || slug) AS items FROM (
+                SELECT slug, name FROM categories
+                UNION
+                SELECT substr(tag, 10) AS slug, substr(tag, 10) AS name FROM tags
+                WHERE tag LIKE 'category:%' AND substr(tag, 10) NOT IN (SELECT slug FROM categories)
+            )
+            ORDER BY name COLLATE NOCASE
+            """, r => new Category(r.GetString(0), r.GetString(1), r.GetInt32(2)));
 
     // ---- entries ----
 

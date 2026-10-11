@@ -1,0 +1,84 @@
+@page "/categories"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Web.Services
+@inject CatalogAccess Catalog
+@rendermode InteractiveServer
+
+<PageTitle>Categories</PageTitle>
+
+<h1>Commercial categories</h1>
+<p class="lead">Categories group commercials so the schedule can pick the right kind for each show, for example toys and cereal during cartoons, and no alcohol before 9pm. Folders like <em>90s\Cars</em> become categories automatically. Add your own here, or straight from the Needs attention page.</p>
+
+<div class="card">
+    <h2>Add a category</h2>
+    <div class="inline-form">
+        <input @bind="newName" placeholder="e.g. Breakfast cereal" @onkeydown="OnKey" />
+        <button class="button primary" @onclick="Add">Add category</button>
+    </div>
+    @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+</div>
+
+@if (categories.Count == 0)
+{
+    <div class="card"><p>No categories yet.</p></div>
+}
+else
+{
+    <table class="table">
+        <thead><tr><th>Category</th><th>Commercials</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var c in categories)
+        {
+            <tr>
+                <td>@c.Name</td>
+                <td>@c.Items</td>
+                <td>
+                    @if (c.Items == 0)
+                    {
+                        <button class="link" @onclick="() => Remove(c.Slug)">remove</button>
+                    }
+                    else
+                    {
+                        <span class="muted">in use</span>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<CatalogDb.Category> categories = [];
+    private string newName = "";
+    private string? notice;
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        if (Catalog.CatalogExists) categories = Catalog.Run(db => db.ListCategories());
+    }
+
+    private void Add()
+    {
+        if (string.IsNullOrWhiteSpace(newName)) { notice = "Type a name first."; return; }
+        string name = newName.Trim();
+        Catalog.Run(db => db.AddCategory(name));
+        notice = $"Added \"{name}\". It is now a choice on the Needs attention page.";
+        newName = "";
+        Reload();
+    }
+
+    private void Remove(string slug)
+    {
+        Catalog.Run(db => db.RemoveCategory(slug));
+        notice = "Removed.";
+        Reload();
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Add();
+    }
+}
