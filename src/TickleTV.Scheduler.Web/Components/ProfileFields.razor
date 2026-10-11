@@ -1,0 +1,33 @@
+@* Picture and sound choices for a channel, in plain words. Binds to a Channels.ProfileEdit. *@
+@using TickleTV.Scheduler.Web.Components.Pages
+
+<label>Picture quality
+    <select @bind="Profile.Quality">
+        <option value="480">Standard (480p), smallest files, fine for old TV</option>
+        <option value="720">HD (720p), a good middle ground</option>
+        <option value="1080">Full HD (1080p), sharpest, needs the most power</option>
+    </select>
+</label>
+<label>Video format
+    <select @bind="Profile.Codec">
+        <option value="h264">H.264, plays everywhere (recommended)</option>
+        <option value="hevc">HEVC (H.265), smaller files, needs newer players</option>
+    </select>
+</label>
+<label>Use the graphics card to encode
+    <select @bind="Profile.Hardware">
+        <option value="none">No, use the processor (works on any computer)</option>
+        <option value="nvidia">Yes, NVIDIA</option>
+        <option value="intel">Yes, Intel (Quick Sync)</option>
+        <option value="amd">Yes, AMD</option>
+        <option value="videotoolbox">Yes, Apple</option>
+        <option value="vaapi">Yes, Linux VAAPI</option>
+        <option value="vulkan">Yes, Vulkan</option>
+    </select>
+</label>
+<label class="check"><input type="checkbox" @bind="Profile.PassThrough" /> Pass through files that already match (lighter on the computer, but every file must be the same format)</label>
+<label class="check"><input type="checkbox" @bind="Profile.NormalizeLoudness" /> Even out the volume between shows and commercials</label>
+
+@code {
+    [Parameter] public Channels.ProfileEdit Profile { get; set; } = new();
+}

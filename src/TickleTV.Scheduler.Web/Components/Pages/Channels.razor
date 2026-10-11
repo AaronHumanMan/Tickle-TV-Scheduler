@@ -1,0 +1,173 @@
+@page "/channels"
+@using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@inject CatalogAccess Catalog
+@rendermode InteractiveServer
+
+<PageTitle>Channels</PageTitle>
+
+<h1>Channels</h1>
+<p class="lead">Each channel is its own TV station with its own schedule and its own picture settings. Tickle TV creates the channel in ErsatzTV for you. ErsatzTV only reads channel settings when it starts, so <strong>restart ErsatzTV after adding or changing a channel</strong>.</p>
+
+@if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+
+@if (lineupPath is null || !File.Exists(lineupPath))
+{
+    <div class="card warn">
+        <h2>ErsatzTV's lineup file not found</h2>
+        <p>I looked for it at <code>@(lineupPath ?? "(not set)")</code>. Set the right path on the Settings page, or run ErsatzTV once to create it.</p>
+    </div>
+}
+else
+{
+    @foreach (var ch in channels)
+    {
+        bool inSchedule = scheduler.Channels.Any(c => c.Number == ch.Number);
+        <div class="card">
+            <h2>Channel @ch.Number: @ch.Name</h2>
+            <p>@ch.Summary &middot; guide id <code>@ch.TvgId</code>@(string.IsNullOrEmpty(ch.Group) ? "" : $" · group {ch.Group}")</p>
+            @if (!inSchedule)
+            {
+                <p class="why">This channel exists in ErsatzTV but has no schedule here yet.</p>
+                <button class="button" @onclick="() => AddToScheduler(ch)">Give it a schedule</button>
+            }
+            else
+            {
+                <p class="muted">Schedule: @scheduler.Channels.First(c => c.Number == ch.Number).Schedule.Count time slot(s). <a href="schedule">Edit the schedule</a></p>
+            }
+            <button class="button secondary" @onclick="() => BeginEdit(ch)">@(editing?.Number == ch.Number ? "Hide settings" : "Picture and sound settings")</button>
+
+            @if (editing?.Number == ch.Number)
+            {
+                <div class="form">
+                    <label>Channel name <input @bind="editName" /></label>
+                    <label>Guide group (optional) <input @bind="editGroup" placeholder="e.g. Tickle TV" /></label>
+                    <label>Logo address (optional) <input @bind="editLogo" placeholder="https://..." /></label>
+                    <ProfileFields Profile="editProfile" />
+                    <button class="button primary" @onclick="SaveEdit">Save channel settings</button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="card">
+        <h2>Add a channel</h2>
+        <div class="form">
+            <label>Channel number <input @bind="newNumber" /></label>
+            <label>Channel name <input @bind="newName" placeholder="e.g. Kids TV" /></label>
+            <label>Guide group (optional) <input @bind="newGroup" placeholder="e.g. Tickle TV" /></label>
+            <ProfileFields Profile="newProfile" />
+            <button class="button primary" @onclick="AddChannel">Create the channel</button>
+        </div>
+        <p class="muted">The new channel gets a starter schedule (the first show in your catalog, all day) that you can change on the Schedule page.</p>
+    </div>
+}
+
+@code {
+    private string? lineupPath;
+    private IReadOnlyList<NextChannel> channels = [];
+    private SchedulerConfig scheduler = new();
+    private string? notice;
+
+    private NextChannel? editing;
+    private string editName = "";
+    private string editGroup = "";
+    private string editLogo = "";
+    private ProfileEdit editProfile = new();
+
+    private string newNumber = "2";
+    private string newName = "";
+    private string newGroup = "";
+    private ProfileEdit newProfile = new();
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        scheduler = Config.LoadLoose();
+        lineupPath = scheduler.ResolvePath(scheduler.Next.Lineup);
+        channels = File.Exists(lineupPath) ? NextLineup.Load(lineupPath) : [];
+        newNumber = NextLineup.NextFreeNumber(channels);
+        if (channels.Count > 0) newProfile = ProfileEdit.From(channels[0].Profile);
+    }
+
+    private void BeginEdit(NextChannel ch)
+    {
+        if (editing?.Number == ch.Number) { editing = null; return; }
+        editing = ch;
+        editName = ch.Name;
+        editGroup = ch.Group ?? "";
+        editLogo = ch.Logo ?? "";
+        editProfile = ProfileEdit.From(ch.Profile);
+    }
+
+    private void SaveEdit()
+    {
+        if (editing is null || lineupPath is null) return;
+        try
+        {
+            NextLineup.UpdateChannel(lineupPath, editing.Number, editName.Trim(), editProfile.ToProfile(), editLogo, editGroup);
+            var sc = scheduler.Channels.FirstOrDefault(c => c.Number == editing.Number);
+            if (sc is not null) { sc.Name = editName.Trim(); Config.Save(scheduler); }
+            notice = $"Saved channel {editing.Number}. Restart ErsatzTV for the picture settings to take effect.";
+            editing = null;
+            Reload();
+        }
+        catch (Exception ex) { notice = "Couldn't save: " + ex.Message; }
+    }
+
+    private void AddChannel()
+    {
+        if (lineupPath is null) return;
+        if (string.IsNullOrWhiteSpace(newName)) { notice = "Give the channel a name first."; return; }
+        if (!int.TryParse(newNumber.Trim(), out int n) || n <= 0) { notice = "The channel number must be a whole number, like 2."; return; }
+        try
+        {
+            NextChannel created = NextLineup.AddChannel(lineupPath, n.ToString(), newName.Trim(), null, newProfile.ToProfile(), group: newGroup);
+            AddToScheduler(created);
+            notice = $"Created channel {created.Number} ({created.Name}). Restart ErsatzTV so it starts streaming, then set its schedule.";
+            newName = "";
+            Reload();
+        }
+        catch (Exception ex) { notice = "Couldn't create the channel: " + ex.Message; }
+    }
+
+    private void AddToScheduler(NextChannel ch)
+    {
+        if (scheduler.Channels.Any(c => c.Number == ch.Number)) return;
+        ChannelConfig? template = scheduler.Channels.FirstOrDefault();
+        string firstShow = Catalog.CatalogExists ? Catalog.Run(db => db.ListShows()).FirstOrDefault() ?? "" : "";
+        var cfg = new ChannelConfig
+        {
+            Number = ch.Number,
+            Name = ch.Name,
+            TvgId = ch.TvgId ?? $"tickle.{ch.Number}",
+            HorizonHours = template?.HorizonHours ?? 24,
+            Defaults = template?.Defaults ?? new SlotDefaults(),
+            Ads = template?.Ads ?? new AdsConfig(),
+            Bumpers = template?.Bumpers ?? new BumpersConfig(),
+            Filler = template?.Filler ?? new FillerConfig(),
+            Gap = template?.Gap ?? new GapConfig(),
+            Schedule = string.IsNullOrEmpty(firstShow) ? [] : [new SlotConfig { Time = "06:00", Show = firstShow, Order = "shuffle" }],
+        };
+        scheduler.Channels.Add(cfg);
+        Config.Save(scheduler);
+        notice = $"Channel {ch.Number} now has a schedule. Edit it on the Schedule page.";
+        Reload();
+    }
+
+    /// <summary>Editable copy of a profile for the form.</summary>
+    public sealed class ProfileEdit
+    {
+        public int Quality { get; set; } = 1080;
+        public string Codec { get; set; } = "h264";
+        public string Hardware { get; set; } = "none";
+        public bool PassThrough { get; set; }
+        public bool NormalizeLoudness { get; set; } = true;
+
+        public static ProfileEdit From(ChannelProfile p) => new() { Quality = p.Quality, Codec = p.Codec, Hardware = p.Hardware, PassThrough = p.PassThrough, NormalizeLoudness = p.NormalizeLoudness };
+        public ChannelProfile ToProfile() => new() { Quality = Quality, Codec = Codec, Hardware = Hardware, PassThrough = PassThrough, NormalizeLoudness = NormalizeLoudness };
+    }
+}
