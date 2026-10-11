@@ -28,8 +28,10 @@ else
             }
             else
             {
+                <div class="table-wrap">
                 <table class="table schedule">
-                    <thead><tr><th>Starts at</th><th>Show</th><th>Episode order</th><th>Each show ends on</th><th>Commercial breaks inside each episode<br /><span class="muted small">needs chapter marks; blank = channel setting</span></th><th></th></tr></thead>
+                    <colgroup><col class="c-time" /><col class="c-show" /><col class="c-order" /><col class="c-pad" /><col class="c-breaks" /><col class="c-remove" /></colgroup>
+                    <thead><tr><th>Starts at</th><th>Show</th><th>Episode order</th><th>Each show ends on</th><th>Breaks inside each episode<br /><span class="muted small">needs chapter marks; blank = channel setting</span></th><th></th></tr></thead>
                     <tbody>
                     @foreach (var slot in ch.Schedule.OrderBy(s => s.Time))
                     {
@@ -52,12 +54,13 @@ else
                                     <option value="none">When the show ends</option>
                                 </select>
                             </td>
-                            <td><input type="number" min="0" max="8" class="narrow" value="@slot.MaxBreaks" placeholder="@ch.Defaults.MaxBreaks" @onchange="e => slot.MaxBreaks = int.TryParse(e.Value?.ToString(), out int n) ? n : null" /></td>
+                            <td><input type="number" min="0" max="8" value="@slot.MaxBreaks" placeholder="@ch.Defaults.MaxBreaks" @onchange="e => slot.MaxBreaks = int.TryParse(e.Value?.ToString(), out int n) ? n : null" /></td>
                             <td><button class="link" @onclick="() => ch.Schedule.Remove(slot)">remove</button></td>
                         </tr>
                     }
                     </tbody>
                 </table>
+                </div>
             }
             <div class="actions">
                 <button class="button" @onclick="() => AddSlot(ch)">Add a time slot</button>

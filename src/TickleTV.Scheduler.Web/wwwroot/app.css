@@ -109,10 +109,18 @@ pre { background: #eef1f7; padding: 12px 14px; border-radius: 8px; overflow-x: a
 .days { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
 .days input { width: 80px; font-size: 1rem; padding: 6px 8px; border: 1px solid #c9d3ea; border-radius: 8px; }
 
+.table-wrap { width: 100%; overflow-x: auto; }
+.table.schedule { table-layout: fixed; min-width: 760px; }
 .table.schedule td { vertical-align: middle; }
-.table.schedule input, .table.schedule select { font-size: 0.95rem; padding: 6px 8px; border: 1px solid #c9d3ea; border-radius: 8px; background: #fff; }
-.table.schedule input.narrow { width: 70px; }
-.table.schedule .show-cell { min-width: 220px; }
+.table.schedule td, .table.schedule th { padding: 8px 8px; }
+.table.schedule input, .table.schedule select { width: 100%; box-sizing: border-box; font-size: 0.95rem; padding: 6px 8px; border: 1px solid #c9d3ea; border-radius: 8px; background: #fff; }
+.table.schedule .c-time { width: 12%; }
+.table.schedule .c-show { width: 30%; }
+.table.schedule .c-order { width: 20%; }
+.table.schedule .c-pad { width: 20%; }
+.table.schedule .c-breaks { width: 11%; }
+.table.schedule .c-remove { width: 7%; }
+.table.schedule .show-cell { min-width: 0; }
 .save-row { margin: 16px 0; display: flex; gap: 10px; }
 
 .table.schedule td, .table.schedule th { overflow: visible; }
