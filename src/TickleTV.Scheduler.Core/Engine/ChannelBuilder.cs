@@ -54,6 +54,8 @@ public sealed class ChannelBuilder
             .Select(i => _db.GetEntry(i.Id)!)
             .ToList();
         BumperSet bumperSet = LoadBumpers();
+        FillerClip? gapFiller = LoadFiller();
+        if (gapFiller is null) warnings.Add("No filler clip matched the filler pool; gaps will be black slate.");
         List<CatalogEntry> bumperLibrary = _db.ListItems(MediaKind.Bumper).Select(i => _db.GetEntry(i.Id)!).ToList();
         var recentPlays = new Dictionary<long, DateTimeOffset>(); // this build's own airings
         TimeSpan cooldown = TimeSpan.FromMinutes(_channel.Ads.CooldownMinutes);
@@ -102,6 +104,7 @@ public sealed class ChannelBuilder
                 PaddingPolicy = slot.PaddingPolicy(_channel.Defaults),
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
                 Bumpers = bumperSet,
+                Filler = gapFiller,
             };
             SpikeResult built = SpikeBuilder.Build(request);
             warnings.AddRange(built.Warnings.Select(w => $"{cursor:ddd HH:mm} {slot.Show}: {w}"));
@@ -145,6 +148,14 @@ public sealed class ChannelBuilder
             Plays = plays,
             Warnings = warnings,
         };
+    }
+
+    private FillerClip? LoadFiller()
+    {
+        if (string.IsNullOrWhiteSpace(_channel.Filler.Pool)) return null;
+        PoolQuery pool = PoolQuery.Parse(_channel.Filler.Pool);
+        CatalogEntry? pick = pool.Filter(_db.ListItems(MediaKind.Filler).Select(i => _db.GetEntry(i.Id)!)).FirstOrDefault();
+        return pick is null ? null : new FillerClip(pick.Item.Path, pick.Item.DurationMs);
     }
 
     private BumperSet LoadBumpers()

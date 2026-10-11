@@ -79,6 +79,7 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 - `ads.pool` is a query over the catalog: `kind = commercial AND era within 3 AND NOT tag:late-night`. `ads.cooldown_minutes` keeps a clip off air after it plays.
 - A rebuild replaces every playout window from its start time forward and merges the guide, so config edits reach the air on the next build. `--dry-run` prints the plan and changes nothing, including rotation state.
 - `bumpers` brackets each break with a clip before the ads and one after, drawn from a pool, rotating so the same bumper isn't seen every break. Tag bumpers `break-out` and `break-in` and set `before_tag` / `after_tag` to split the roles.
+- `filler` names a clip that covers whatever ads and bumpers cannot fill exactly, playing from its start and looping as needed. Without one, gaps are black video with silence. Any file with Filler, Fallback, or Slate in its name is a filler.
 - `cold_open_break` keeps the cut right after a short first chapter (a teaser or cold open), the way real TV breaks.
 - `parse <folder>` shows how files would be classified without probing or writing anything.
 

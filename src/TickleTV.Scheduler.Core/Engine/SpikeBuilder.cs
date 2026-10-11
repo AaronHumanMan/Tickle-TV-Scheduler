@@ -26,6 +26,11 @@ public sealed record SpikeRequest
     public PaddingPolicy PaddingPolicy { get; init; } = new();
     public int MaxRepeatsPerBreak { get; init; } = 2;
     public BumperSet Bumpers { get; init; } = new();
+    /// <summary>
+    /// A clip that covers whatever ads and bumpers cannot: the leftover plays from its start, looping if the gap
+    /// is longer than the clip. Without one, gaps are black video with silence.
+    /// </summary>
+    public FillerClip? Filler { get; init; }
 }
 
 public sealed record SpikeResult
@@ -70,9 +75,10 @@ public static class SpikeBuilder
         int breakIndex = 0;
         var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak) };
         var bumpers = new BumperRotation(req.Bumpers);
+        var gaps = new GapFiller(req.Filler);
 
         if (req.BreakPolicy.PreRoll)
-            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, warnings);
+            cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings);
 
         for (int i = 0; i < acts.Count; i++)
         {
@@ -95,7 +101,7 @@ public static class SpikeBuilder
             if (!isLast || req.BreakPolicy.PostRoll || (breakCount == 1 && midBreaks == 0 && !req.BreakPolicy.PreRoll))
             {
                 if (breakIndex < budgets.Length)
-                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, warnings);
+                    cursor = EmitBreak(items, cursor, budgets[breakIndex++], filler, bumpers, gaps, warnings);
             }
         }
 
@@ -103,7 +109,7 @@ public static class SpikeBuilder
         long drift = (long)(slotEnd - cursor).TotalMilliseconds;
         if (drift > 0)
         {
-            items.Add(Slate($"slate-final", cursor, drift));
+            gaps.Emit(items, cursor, drift);
             cursor = slotEnd;
         }
         else if (drift < 0)
@@ -150,7 +156,7 @@ public static class SpikeBuilder
     }
 
     private static DateTimeOffset EmitBreak(
-        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, BumperRotation bumpers, List<string> warnings)
+        List<PlayoutItem> items, DateTimeOffset cursor, long budgetMs, BreakFiller filler, BumperRotation bumpers, GapFiller gaps, List<string> warnings)
     {
         if (budgetMs <= 0) return cursor;
         int n = items.Count(i => i.Id.StartsWith("ad-")) + 1;
@@ -177,9 +183,9 @@ public static class SpikeBuilder
 
         if (fill.RemainderMs > 0)
         {
-            if (fill.RemainderMs > 5_000 && filler.HasClips)
+            if (fill.RemainderMs > 5_000 && filler.HasClips && !gaps.HasFiller)
                 warnings.Add($"{fill.RemainderMs / 1000}s of a break filled with slate: no clip combination fits.");
-            items.Add(Slate($"slate-{items.Count}", cursor, fill.RemainderMs));
+            gaps.Emit(items, cursor, fill.RemainderMs);
             cursor = cursor.AddMilliseconds(fill.RemainderMs);
         }
 
@@ -198,6 +204,45 @@ public static class SpikeBuilder
         Finish = start.AddMilliseconds(clip.DurationMs),
         Source = new LocalSource { Path = clip.Path },
     };
+
+    /// <summary>
+    /// Covers leftover time. With a filler clip, the gap plays from the clip's start and loops as needed,
+    /// each segment at least <see cref="MinSegmentMs"/> long. Without one, a black slate.
+    /// </summary>
+    private sealed class GapFiller(FillerClip? filler)
+    {
+        public const long MinSegmentMs = 2_000;
+        private int _n;
+
+        public bool HasFiller => filler is not null && filler.DurationMs >= MinSegmentMs;
+
+        public void Emit(List<PlayoutItem> items, DateTimeOffset start, long gapMs)
+        {
+            if (!HasFiller)
+            {
+                items.Add(Slate($"slate-{items.Count}", start, gapMs));
+                return;
+            }
+
+            long remaining = gapMs;
+            DateTimeOffset cursor = start;
+            while (remaining > 0)
+            {
+                long segment = Math.Min(remaining, filler!.DurationMs);
+                // Never leave a sliver for the next loop: fold it into this segment's budget by shortening this one.
+                if (remaining - segment is > 0 and < MinSegmentMs) segment = remaining - MinSegmentMs;
+                items.Add(new PlayoutItem
+                {
+                    Id = $"filler-{++_n}",
+                    Start = cursor,
+                    Finish = cursor.AddMilliseconds(segment),
+                    Source = new LocalSource { Path = filler.Path, InPointMs = 0, OutPointMs = segment },
+                });
+                cursor = cursor.AddMilliseconds(segment);
+                remaining -= segment;
+            }
+        }
+    }
 
     /// <summary>Round-robin over each bumper list so the same bumper is not seen every break.</summary>
     private sealed class BumperRotation(BumperSet set)

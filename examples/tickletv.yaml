@@ -37,6 +37,9 @@ channels:
       # after_tag: break-in
       min_ad_seconds: 15       # skip bumpers when a break is too short for them plus ads
 
+    filler:
+      pool: kind = filler      # covers whatever ads can't fill, looping; without it gaps are black
+
     # Daily grid. Each slot airs episodes of its show back to back until the next slot starts.
     schedule:
       - time: "06:00"

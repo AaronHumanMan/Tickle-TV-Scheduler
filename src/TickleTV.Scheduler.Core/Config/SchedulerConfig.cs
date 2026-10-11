@@ -79,7 +79,14 @@ public sealed class ChannelConfig
     public SlotDefaults Defaults { get; set; } = new();
     public AdsConfig Ads { get; set; } = new();
     public BumpersConfig Bumpers { get; set; } = new();
+    public FillerConfig Filler { get; set; } = new();
     public List<SlotConfig> Schedule { get; set; } = [];
+}
+
+public sealed class FillerConfig
+{
+    /// <summary>Pool query for the clip that covers gaps ads cannot fill. The first match is used; it loops as needed. Empty means black slate.</summary>
+    public string Pool { get; set; } = "kind = filler";
 }
 
 public sealed class BumpersConfig
