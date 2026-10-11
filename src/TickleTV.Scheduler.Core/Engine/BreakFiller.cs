@@ -9,8 +9,11 @@ public sealed class BreakFiller
 {
     public int MaxRepeatsPerBreak { get; init; } = 2;
 
-    /// <summary>Resolution of the knapsack in milliseconds; clips are rounded down to it.</summary>
+    /// <summary>Resolution of the knapsack in milliseconds. Clips are rounded up to it, so a fill never overshoots.</summary>
     public int ResolutionMs { get; init; } = 100;
+
+    /// <summary>Extra cost for using a clip a second time in the same break, so variety wins when budgets tie.</summary>
+    public int RepeatPenalty { get; init; } = 10;
 
     private readonly IReadOnlyList<FillerClip> _clips;
     private readonly Dictionary<string, int> _plays = new();
@@ -35,59 +38,64 @@ public sealed class BreakFiller
     }
 
     /// <summary>
-    /// Bounded knapsack over budget units. Among fills with the same leftover, prefer the one that
-    /// uses clips played least so far, so rotation spreads across the library.
+    /// 0/1 knapsack over an expanded item list (one entry per allowed repeat), maximizing filled time.
+    /// Among fills with the same leftover, the lowest cost wins: cost grows with prior plays and with
+    /// repeats inside this break, so rotation spreads across the library.
     /// </summary>
     private List<FillerClip> Knapsack(long budgetMs)
     {
         int units = (int)(budgetMs / ResolutionMs);
-        var items = new List<(FillerClip clip, int size)>();
+        var items = new List<(FillerClip clip, int size, long cost)>();
         foreach (FillerClip clip in _clips)
         {
-            int size = (int)(clip.DurationMs / ResolutionMs);
+            int size = (int)((clip.DurationMs + ResolutionMs - 1) / ResolutionMs); // round up: never overshoot
             if (size <= 0 || size > units) continue;
-            // Exact duration must also fit the real budget, not just the rounded one.
-            for (int r = 0; r < MaxRepeatsPerBreak; r++) items.Add((clip, size));
+            long baseCost = _plays.GetValueOrDefault(clip.Path) + 1;
+            for (int r = 0; r < MaxRepeatsPerBreak; r++)
+                items.Add((clip, size, baseCost + r * RepeatPenalty));
         }
         if (items.Count == 0) return [];
 
-        // best[u] = (reachable, cost) where cost is the sum of prior play counts; parent pointers rebuild the pick.
-        var reachable = new bool[units + 1];
-        var cost = new long[units + 1];
-        var parent = new int[units + 1];
-        var parentItem = new int[units + 1];
-        reachable[0] = true;
-        Array.Fill(parent, -1);
+        // Full table so reconstruction is exact: take[i, u] = item i used to reach u from the first i items.
+        int n = items.Count;
+        var reachable = new bool[n + 1, units + 1];
+        var cost = new long[n + 1, units + 1];
+        var take = new bool[n + 1, units + 1];
+        reachable[0, 0] = true;
 
-        // 0/1 over the expanded item list; iterate units downward so each copy is used at most once.
-        for (int i = 0; i < items.Count; i++)
+        for (int i = 1; i <= n; i++)
         {
-            (FillerClip clip, int size) = items[i];
-            long itemCost = _plays.GetValueOrDefault(clip.Path) + 1;
-            for (int u = units; u >= size; u--)
+            (_, int size, long itemCost) = items[i - 1];
+            for (int u = 0; u <= units; u++)
             {
-                if (!reachable[u - size]) continue;
-                long candidate = cost[u - size] + itemCost;
-                if (!reachable[u] || candidate < cost[u])
+                if (reachable[i - 1, u])
                 {
-                    reachable[u] = true;
-                    cost[u] = candidate;
-                    parent[u] = u - size;
-                    parentItem[u] = i;
+                    reachable[i, u] = true;
+                    cost[i, u] = cost[i - 1, u];
+                }
+                if (u >= size && reachable[i - 1, u - size])
+                {
+                    long candidate = cost[i - 1, u - size] + itemCost;
+                    if (!reachable[i, u] || candidate < cost[i, u])
+                    {
+                        reachable[i, u] = true;
+                        cost[i, u] = candidate;
+                        take[i, u] = true;
+                    }
                 }
             }
         }
 
         int best = units;
-        while (best > 0 && !reachable[best]) best--;
+        while (best > 0 && !reachable[n, best]) best--;
 
-        // Reconstruct. Guard against the real durations exceeding the real budget after rounding.
         var picks = new List<FillerClip>();
-        for (int u = best; u > 0; u = parent[u])
-            picks.Add(items[parentItem[u]].clip);
-
-        while (picks.Sum(c => c.DurationMs) > budgetMs && picks.Count > 0)
-            picks.RemoveAt(picks.Count - 1);
+        for (int i = n, u = best; i > 0 && u > 0; i--)
+        {
+            if (!take[i, u]) continue;
+            picks.Add(items[i - 1].clip);
+            u -= items[i - 1].size;
+        }
         return picks;
     }
 
