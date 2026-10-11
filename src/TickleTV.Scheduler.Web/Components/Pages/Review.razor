@@ -24,6 +24,11 @@
     &middot; <label class="inline">Per page <select value="@PageSize" @onchange="SetPageSize"><option value="50">50</option><option value="100">100</option><option value="150">150</option><option value="200">200</option></select></label></p>
 }
 
+@if (noSidecars && counts.GetValueOrDefault(AttentionReason.EpisodeDetails) + counts.GetValueOrDefault(AttentionReason.Unknown) > 0)
+{
+    <p class="notice"><strong>A shortcut for episodes:</strong> none of your videos has a <em>.nfo</em> details file next to it. If you use Kodi, Jellyfin, Emby or tinyMediaManager, let it look up your shows: it writes those files, and the next scan here reads them and fills in the show, season, episode and air date for you. See <a href="help">Help</a> under "How files get sorted".</p>
+}
+
 <ItemList Items="entries" NoteFor="NoteFor" EmptyTitle="Nothing to look at" EmptyText="Every file in this list has been labeled." OnChanged="Reload" />
 
 @if (entries.Count >= PageSize)
@@ -36,6 +41,7 @@
     private AttentionReason? filter;
     private IReadOnlyDictionary<AttentionReason, int> counts = new Dictionary<AttentionReason, int>();
     private List<CatalogEntry> entries = [];
+    private bool noSidecars;
     private readonly Dictionary<long, AttentionReason> reasons = new();
 
     protected override void OnInitialized()
@@ -54,6 +60,7 @@
     {
         if (!Catalog.CatalogExists) { entries = []; return; }
         counts = Catalog.Run(db => db.CountNeedingAttention());
+        noSidecars = Catalog.Run(db => db.CountWithSidecar()) == 0;
         var rows = Catalog.Run(db => db.ListNeedingAttention(filter, PageSize));
         reasons.Clear();
         foreach (var r in rows) reasons[r.Entry.Item.Id] = r.Reason;

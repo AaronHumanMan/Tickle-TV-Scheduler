@@ -73,7 +73,9 @@ public sealed class JobRunner
                     ScanReport report = await Task.Run(() => _catalog.Run(db =>
                         new Scanner(db, new Ffprobe(), line => AddLog(job, line)).ScanAsync(roots, CancellationToken.None, progress).GetAwaiter().GetResult()));
                     job.Result = report;
-                    job.Summary = $"Added {report.Added}, updated {report.Updated}, moved {report.Moved}, unchanged {report.Unchanged}, missing {report.Missing}." + (report.WithSidecar > 0 ? $" {report.WithSidecar} took their details from .nfo files." : "")
+                    bool anySidecar = report.WithSidecar > 0 || _catalog.Run(db => db.CountWithSidecar()) > 0;
+                    job.Summary = $"Added {report.Added}, updated {report.Updated}, moved {report.Moved}, unchanged {report.Unchanged}, missing {report.Missing}."
+                                  + (report.WithSidecar > 0 ? $" {report.WithSidecar} took their details from .nfo files." : anySidecar ? "" : " No .nfo details files were found next to your videos (see Help: How files get sorted).")
                                   + (report.Unclassified.Count > 0 ? $" {report.Unclassified.Count} need attention." : "")
                                   + (report.Errors.Count > 0 ? $" {report.Errors.Count} problems." : "");
                 }

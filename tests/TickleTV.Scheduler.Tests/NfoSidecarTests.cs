@@ -162,6 +162,7 @@ public class NfoSidecarTests : IDisposable
         ScanReport first = await scanner.ScanAsync([_root]);
         Assert.Equal(1, first.Added);
         Assert.Equal(0, first.WithSidecar);
+        Assert.Equal(0, _db.CountWithSidecar());
         Assert.Single(first.Unclassified);
         Assert.Equal(MediaKind.Unknown, _db.FindByPath(video)!.Kind);
 
@@ -175,6 +176,7 @@ public class NfoSidecarTests : IDisposable
         Assert.Equal(1, second.WithSidecar);
         Assert.Equal(0, second.Unchanged);
 
+        Assert.Equal(1, _db.CountWithSidecar());
         MediaItem item = _db.FindByPath(video)!;
         Assert.Equal(MediaKind.Episode, item.Kind);
         Assert.Equal(FactSource.Nfo, item.KindSource);

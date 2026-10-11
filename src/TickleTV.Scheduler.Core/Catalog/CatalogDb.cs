@@ -347,6 +347,12 @@ public sealed class CatalogDb : IDisposable
 
     public int CountItems() => (int)Scalar<long>("SELECT COUNT(*) FROM media_items WHERE missing_utc IS NULL");
 
+    /// <summary>How many files took any fact from a .nfo sidecar. Zero means the library has no sidecars at all.</summary>
+    public int CountWithSidecar() => (int)Scalar<long>("""
+        SELECT COUNT(*) FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
+        WHERE m.missing_utc IS NULL AND (m.kind_source = 'nfo' OR e.source = 'nfo')
+        """);
+
     public IReadOnlyDictionary<MediaKind, int> CountByKind()
     {
         var result = new Dictionary<MediaKind, int>();
