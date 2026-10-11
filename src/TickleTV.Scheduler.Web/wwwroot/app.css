@@ -30,7 +30,9 @@ a:hover { color: var(--cream); text-decoration: underline; }
 .lcars { min-height: 100vh; display: flex; flex-direction: column; padding: 14px 18px 24px 14px; }
 .lcars-top { display: flex; align-items: stretch; height: var(--bar-h); }
 .lcars-top .elbow { width: var(--sidebar-w); background: var(--orange); border-top-left-radius: 40px; }
-.lcars-top .brand { flex: 1; display: flex; align-items: center; justify-content: flex-end; padding: 0 18px; background: var(--orange); color: var(--black); font-size: 1.4rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.lcars-top .elbow { flex: 1; }
+.lcars-top .brand { display: flex; align-items: center; padding: 0 16px; background: var(--black); color: var(--peach); font-size: 1.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; line-height: 1; }
+.lcars-top .tail { width: 140px; background: var(--orange); }
 .lcars-top .cap { width: 40px; margin-left: 6px; background: var(--orange); border-radius: 0 20px 20px 0; }
 
 .lcars-body { display: flex; flex: 1; min-height: 0; position: relative; }
