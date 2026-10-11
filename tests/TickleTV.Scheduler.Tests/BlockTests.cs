@@ -148,6 +148,80 @@ public class BlockTests : IDisposable
     }
 
     [Fact]
+    public void Config_reads_the_turns_setting_and_rejects_nonsense()
+    {
+        string yaml = """
+            next: { lineup: C:\x\lineup.json }
+            channels:
+              - number: "1"
+                schedule:
+                  - time: "06:00"
+                    shows: [Frasier, Wings]
+                    turns: random
+                  - time: "08:00"
+                    shows: [Cheers, Taxi]
+            """;
+        SchedulerConfig cfg = SchedulerConfig.Parse(yaml, Path.GetTempPath());
+        Assert.True(cfg.Channels[0].Schedule[0].RandomTurns);
+        Assert.False(cfg.Channels[0].Schedule[1].RandomTurns);
+        Assert.Throws<InvalidDataException>(() => SchedulerConfig.Parse(yaml.Replace("turns: random", "turns: sideways"), Path.GetTempPath()));
+
+        // The file only carries the line for a random block; the default stays implicit.
+        string path = Path.Combine(Path.GetTempPath(), "tickletv-turns-" + Guid.NewGuid().ToString("N") + ".yaml");
+        try
+        {
+            cfg.Save(path);
+            string text = File.ReadAllText(path);
+            Assert.Equal(1, text.Split("turns:").Length - 1);
+            Assert.Contains("turns: random", text);
+            Assert.True(SchedulerConfig.Load(path).Channels[0].Schedule[0].RandomTurns);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Random_turns_never_play_the_same_show_twice_in_a_row()
+    {
+        Seed();
+        ChannelConfig ch = Channel();
+        // Two short shows that both fit anywhere, so only the turn order decides who plays.
+        for (int i = 1; i <= 8; i++)
+        {
+            long id = _db.Insert(new MediaItem
+            {
+                ContentHash = $"t{i}", Path = $"/tv/tiny/e{i}.mkv", FileSize = 1, ModifiedUtc = DateTimeOffset.UnixEpoch,
+                Kind = MediaKind.Episode, KindSource = FactSource.Filename, DurationMs = 22 * Min, ProbedUtc = DateTimeOffset.UnixEpoch, Title = $"t{i}",
+            });
+            _db.UpsertEpisode(id, new EpisodeInfo { Show = "Tiny", Season = 1, Episode = i, Source = FactSource.Filename });
+        }
+        ch.Schedule = [new SlotConfig { Time = "06:00", Shows = ["Short", "Tiny"], Turns = "random" }, new SlotConfig { Time = "09:00", Show = "Short" }];
+        var from = new DateTimeOffset(2026, 10, 12, 6, 0, 0, Offset);
+
+        BuildResult r = new ChannelBuilder(_db, new EpisodePicker(_db, 1), ch, "0.0.5", seed: 7).Build(from, from.AddHours(3));
+        string[] titles = r.Programmes.Where(p => p.Title is "Short" or "Tiny").Select(p => p.Title).ToArray();
+        Assert.True(titles.Length >= 6, string.Join(",", titles));
+        // With two shows, "never twice in a row" means they strictly alternate.
+        for (int i = 1; i < titles.Length; i++) Assert.NotEqual(titles[i - 1], titles[i]);
+    }
+
+    [Fact]
+    public void Random_turns_skip_the_show_that_closed_the_block_yesterday()
+    {
+        Seed();
+        ChannelConfig ch = Channel();
+        ch.Schedule[0].Turns = "random";
+        var day1 = new DateTimeOffset(2026, 10, 12, 6, 0, 0, Offset);
+        // Yesterday's block ended on Short, recorded in the plays table.
+        _db.RecordPlay(_db.EpisodesOf("Short")[0].Item.Id, "1", day1.AddDays(-1).AddHours(1), "slot 06:00 Short");
+
+        for (int seed = 0; seed < 10; seed++)
+        {
+            BuildResult r = new ChannelBuilder(_db, new EpisodePicker(_db, 1), ch, "0.0.5", seed: seed).Build(day1, day1.AddHours(1));
+            Assert.Equal("Doc", r.Programmes[0].Title);
+        }
+    }
+
+    [Fact]
     public void Build_warns_once_when_a_block_cannot_hold_all_of_its_shows_in_a_day()
     {
         Seed();

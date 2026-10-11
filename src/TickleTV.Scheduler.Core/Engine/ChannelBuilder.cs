@@ -22,8 +22,8 @@ public sealed record BuildResult
 /// <summary>
 /// Turns a channel's daily grid into a playout window. Each slot airs episodes of its show back to back,
 /// each padded to its boundary, until the next slot's start time. A slot that lists several shows is a block:
-/// the shows take turns, one episode each, and with hold-the-grid a show whose next episode would not fit
-/// before the next slot gives its turn to one that fits. Ads come from the channel's pool with a cooldown so
+/// the shows take turns, one episode each, down the list or at random, and with hold-the-grid a show whose
+/// next episode would not fit before the next slot gives its turn to one that fits. Ads come from the channel's pool with a cooldown so
 /// the same clip does not return too soon.
 /// </summary>
 public sealed class ChannelBuilder
@@ -33,16 +33,18 @@ public sealed class ChannelBuilder
     private readonly ChannelConfig _channel;
     private readonly string _schemaVersion;
     private readonly Action<string>? _log;
-    /// <summary>Whose turn it is next in each block (index into the slot's show list).</summary>
-    private readonly Dictionary<SlotConfig, int> _turn = new();
+    private readonly Random _random;
+    /// <summary>The show that played last in each block (index into the slot's show list; -1 when none has yet).</summary>
+    private readonly Dictionary<SlotConfig, int> _lastTurn = new();
 
-    public ChannelBuilder(CatalogDb db, EpisodePicker picker, ChannelConfig channel, string schemaVersion, Action<string>? log = null)
+    public ChannelBuilder(CatalogDb db, EpisodePicker picker, ChannelConfig channel, string schemaVersion, Action<string>? log = null, int? seed = null)
     {
         _db = db;
         _picker = picker;
         _channel = channel;
         _schemaVersion = schemaVersion;
         _log = log;
+        _random = seed is null ? Random.Shared : new Random(seed.Value);
     }
 
     /// <summary>
@@ -84,10 +86,10 @@ public sealed class ChannelBuilder
         List<SlotConfig> slots = _channel.Schedule.OrderBy(s => s.StartTime).ToList();
         foreach (SlotConfig block in slots.Where(s => s.ShowList.Count > 1))
         {
-            // Blocks carry on from wherever they left off: the show after the one that aired last.
+            // Blocks carry on from wherever they left off: in order, the show after the one that aired last;
+            // at random, anything but the one that aired last.
             string? last = _db.LastSlotShow(_channel.Number, block.Time, from);
-            int lastIndex = last is null ? -1 : IndexOfShow(block, last);
-            _turn[block] = (lastIndex + 1) % block.ShowList.Count;
+            _lastTurn[block] = last is null ? -1 : IndexOfShow(block, last);
             if (BlockAdvisor.Advice(_channel, block, _db.AverageEpisodeMs) is { } advice)
                 warnings.Add($"{block.Time} block: {advice}");
         }
@@ -108,11 +110,13 @@ public sealed class ChannelBuilder
             }
 
             CatalogEntry? episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
-            // A show with no episodes hands its turn to the next show in the block.
-            for (int tries = 1; episode is null && tries < slot.ShowList.Count; tries++)
+            // A show with no episodes hands its turn to another show in the block.
+            var tried = new HashSet<int> { IndexOfShow(slot, show) };
+            while (episode is null && tried.Count < slot.ShowList.Count)
             {
                 warnings.Add($"No episodes found for show '{show}'; skipping its turn.");
-                show = TakeTurn(slot, (IndexOfShow(slot, show) + 1) % slot.ShowList.Count);
+                show = TakeTurn(slot, TurnOrder(slot).First(i => !tried.Contains(i)));
+                tried.Add(IndexOfShow(slot, show));
                 episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
             }
 
@@ -219,30 +223,50 @@ public sealed class ChannelBuilder
     }
 
     /// <summary>
-    /// Which show plays next in the slot. A single show always plays. In a block the shows take turns; with
-    /// hold-the-grid the turn passes to the first show whose next episode fits before the next slot. Null means
-    /// nothing fits and the leftover is short enough to fill with a station break instead.
+    /// Which show plays next in the slot. A single show always plays. In a block the shows take turns, down the
+    /// list or at random; with hold-the-grid the turn passes to the first show in that order whose next episode
+    /// fits before the next slot. Null means nothing fits and the leftover is short enough to fill with a station
+    /// break instead.
     /// </summary>
     private string? ChooseShow(SlotConfig slot, long untilNextMs)
     {
         IReadOnlyList<string> shows = slot.ShowList;
-        int start = _turn.GetValueOrDefault(slot);
+        List<int> order = TurnOrder(slot);
         bool holding = _channel.Gap.HoldGrid && untilNextMs > 0;
         if (holding)
         {
-            for (int i = 0; i < shows.Count; i++)
-            {
-                int idx = (start + i) % shows.Count;
+            foreach (int idx in order)
                 if (NextEpisodeFits(shows[idx], untilNextMs)) return TakeTurn(slot, idx);
-            }
             if (untilNextMs <= _channel.Gap.MaxMinutes * 60_000L) return null;
         }
-        return TakeTurn(slot, start);
+        return TakeTurn(slot, order[0]);
+    }
+
+    /// <summary>
+    /// The block's shows in the order they would like to play next. In order: the show after the last one, then
+    /// round the list. Random: shuffled, with the show that just played moved to the back so it never plays twice
+    /// in a row unless nothing else will do.
+    /// </summary>
+    private List<int> TurnOrder(SlotConfig slot)
+    {
+        int count = slot.ShowList.Count;
+        int last = _lastTurn.GetValueOrDefault(slot, -1);
+        if (!slot.RandomTurns || count < 2)
+            return Enumerable.Range(1, count).Select(i => (last + i) % count).ToList();
+
+        var order = Enumerable.Range(0, count).ToList();
+        for (int i = order.Count - 1; i > 0; i--)
+        {
+            int j = _random.Next(i + 1);
+            (order[i], order[j]) = (order[j], order[i]);
+        }
+        if (last >= 0 && order.Remove(last)) order.Add(last);
+        return order;
     }
 
     private string TakeTurn(SlotConfig slot, int index)
     {
-        _turn[slot] = (index + 1) % slot.ShowList.Count;
+        _lastTurn[slot] = index;
         return slot.ShowList[index];
     }
 

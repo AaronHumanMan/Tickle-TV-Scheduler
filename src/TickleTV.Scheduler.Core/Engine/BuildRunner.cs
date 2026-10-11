@@ -93,7 +93,7 @@ public static class BuildRunner
             BuildResult result;
             try
             {
-                var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, log) { PriorAssignments = prior };
+                var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, log, options.Seed) { PriorAssignments = prior };
                 result = builder.Build(cut, until);
             }
             catch (Exception ex)

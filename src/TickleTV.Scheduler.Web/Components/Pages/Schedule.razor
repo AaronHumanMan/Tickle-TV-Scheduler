@@ -96,6 +96,15 @@ else
                                 </div>
                             }
                             <button class="link" @onclick="() => slot.Shows.Add(string.Empty)">+ add another show to this slot</button>
+                            @if (slot.Shows.Count > 1)
+                            {
+                                <label class="turns">Which show plays next:
+                                    <select value="@(slot.Turns ?? "in_order")" @onchange="e => slot.Turns = NullIfEmpty(e.Value)">
+                                        <option value="in_order">Take turns in the order listed above</option>
+                                        <option value="random">Pick at random (never the same show twice in a row)</option>
+                                    </select>
+                                </label>
+                            }
                             @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
                         </td>
                         <td>

@@ -74,6 +74,7 @@ public sealed class SchedulerConfig
                     throw new InvalidDataException($"Channel {ch.Number}: every slot needs at least one show.");
                 _ = slot.StartTime; // throws on a bad time
                 _ = slot.OrderMode;
+                _ = slot.RandomTurns;
             }
             _ = ch.Defaults.PaddingMode;
         }
@@ -205,8 +206,10 @@ public sealed class SlotConfig
     public string Time { get; set; } = "00:00";
     /// <summary>One show (the simple form). Moved into <see cref="Shows"/> by <see cref="Normalize"/>.</summary>
     public string? Show { get; set; }
-    /// <summary>The shows that share this block. They take turns, one episode each, in this order.</summary>
+    /// <summary>The shows that share this block. They take turns, one episode each, in this order (or at random, see <see cref="Turns"/>).</summary>
     public List<string> Shows { get; set; } = [];
+    /// <summary>How a block picks the next show: in_order (down the list, carrying over day to day) or random (never the same show twice in a row). Null means in_order.</summary>
+    public string? Turns { get; set; }
     /// <summary>chronological or shuffle; applies to every show in the block.</summary>
     public string Order { get; set; } = "chronological";
     public string? Pad { get; set; }
@@ -228,12 +231,22 @@ public sealed class SlotConfig
     {
         if (Shows.Count == 0 && !string.IsNullOrWhiteSpace(Show)) Shows = [Show.Trim()];
         Show = null;
+        // Only a block with random turns needs the line in the file.
+        Turns = RandomTurns && Shows.Count > 1 ? "random" : null;
     }
 
     [YamlIgnore]
     public TimeOnly StartTime => TimeOnly.TryParseExact(Time.Trim(), ["H:mm", "HH:mm", "H:mm:ss"], out TimeOnly t)
         ? t
         : throw new InvalidDataException($"Bad slot time '{Time}'. Use HH:mm.");
+
+    [YamlIgnore]
+    public bool RandomTurns => (Turns ?? "").Trim().ToLowerInvariant() switch
+    {
+        "" or "in_order" or "in-order" or "inorder" or "list" => false,
+        "random" or "shuffle" => true,
+        _ => throw new InvalidDataException($"Unknown turns '{Turns}'. Use in_order or random."),
+    };
 
     [YamlIgnore]
     public OrderMode OrderMode => Order.Trim().ToLowerInvariant() switch

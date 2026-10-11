@@ -62,6 +62,8 @@ channels:
         show: The Simpsons
         order: shuffle
       # A block: several shows share the slot and take turns, one episode each, in this order.
+      # turns: random picks the next show at random instead (never the same show twice in a row).
       # - time: "01:00"
       #   shows: [Good Eats, How It's Made]
+      #   turns: in_order
       #   order: shuffle
