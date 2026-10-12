@@ -7,58 +7,112 @@
 
 <PageTitle>Tickle TV</PageTitle>
 
-<div class="title-row"><h1>Your library at a glance</h1><span class="subtitle">Ticklebits Channel Arrangement Robotic Scheduler</span></div>
+<header class="home-title">
+    <h1>Your library at a glance &bull; 40274</h1>
+    <div class="subtitle">Ticklebits Channel Arrangement Robotic Scheduler</div>
+</header>
 
 @if (!Catalog.CatalogExists)
 {
     <div class="card warn">
         <h2>Nothing scanned yet</h2>
         <p>Tickle TV hasn't looked at your videos yet. Go to <a href="scan">Scan</a>, add the folders where your shows and commercials live, and press Scan.</p>
-        <a class="button primary" href="scan">Go to Scan</a>
+        <a class="button primary" href="scan" data-sound="keyok">Go to Scan</a>
     </div>
 }
 else
 {
-    <div class="tiles">
-        <div class="tile"><div class="big">@Count(MediaKind.Episode)</div><div>TV episodes</div></div>
-        <div class="tile"><div class="big">@Count(MediaKind.Commercial)</div><div>commercials</div></div>
-        <div class="tile"><div class="big">@Count(MediaKind.Bumper)</div><div>bumpers and promos</div></div>
-        <div class="tile @(attention > 0 ? "attention" : "")"><div class="big">@attention</div><div>need attention</div></div>
+    <section class="readout-row" aria-label="Library readout">
+        <div class="readout-wrap">
+            @if (shows.Count == 0)
+            {
+                <p class="muted">No shows yet. Episodes show up here once the scan finds some.</p>
+            }
+            else
+            {
+                <table class="readout">
+                    <thead><tr><th scope="col">Show</th><th scope="col">Episodes</th><th scope="col">Chaptered</th><th scope="col">Dated</th><th scope="col">Typical min</th></tr></thead>
+                    <tbody>
+                    @foreach (var s in shows)
+                    {
+                        <tr><td>@s.Show</td><td>@s.Episodes</td><td>@s.WithChapters</td><td>@s.WithDates</td><td>@s.AvgMinutes</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            <p class="muted small readout-foot"><a href="shows">My shows</a> has the full list with holiday counts.</p>
+        </div>
+        <div class="pills">
+            <div class="pill c-violet"><span class="label">TV episodes</span><span class="num">@Count(MediaKind.Episode).ToString("N0")</span></div>
+            <div class="pill c-lavender"><span class="label">Commercials</span><span class="num">@Count(MediaKind.Commercial).ToString("N0")</span></div>
+            <div class="pill c-orange"><span class="label">Bumpers and promos</span><span class="num">@Count(MediaKind.Bumper).ToString("N0")</span></div>
+            <div class="pill c-red @(attention > 0 ? "" : "quiet")"><span class="label">Need attention</span><span class="num">@attention.ToString("N0")</span></div>
+        </div>
+    </section>
+
+    <div class="rails" aria-hidden="true">
+        <div class="rail one"><span class="s violet"></span><span class="sep"></span><span class="s lavender"></span><span class="s red"></span><span class="sep"></span></div>
+        <div class="rail two"><span class="s red stub"></span><span class="s red"></span><span class="sep"></span><span class="s violet"></span><span class="s lavender"></span></div>
     </div>
 
-    @if (attention > 0)
-    {
-        <div class="card">
-            <h2>Some files need a quick look</h2>
-            <p>@attention files were scanned but I couldn't tell what they are, or couldn't label them well. You don't have to fix them all. Each one you label makes the channel a little better.</p>
-            <a class="button" href="review">Go to Needs attention</a>
+    <section class="lower">
+        <nav class="step-rail" aria-label="Steps">
+            <a class="step red" href="scan" data-sound="keyok">01 Scan</a>
+            <a class="step orange" href="review" data-sound="keyok">02 Label</a>
+            <a class="step red" href="build" data-sound="keyok">03 Build</a>
+            <a class="step lavender grow" href="help" data-sound="keyok">Help</a>
+        </nav>
+        <div class="lower-panels">
+            @if (attention > 0)
+            {
+                <div class="card">
+                    <h2>Some files need a quick look</h2>
+                    <p>@attention.ToString("N0") files were scanned but I couldn't tell what they are, or couldn't label them well. You don't have to fix them all. Each one you label makes the channel a little better.</p>
+                    <a class="button" href="review" data-sound="keyok">Go to Needs attention</a>
+                </div>
+            }
+            else
+            {
+                <div class="card ok">
+                    <h2>Everything is labeled</h2>
+                    <p>Every scanned file has a kind and a label. Nice work.</p>
+                </div>
+            }
+
+            <JobPanel />
+
+            <div class="card item">
+                <h2>How Tickle TV works, in three steps</h2>
+                <ol class="steps">
+                    <li><strong><a href="scan">Scan</a>.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
+                    <li><strong><a href="review">Label</a>.</strong> Most files get sorted automatically from their names. The ones that don't show up under Needs attention, where you can watch each one and say what it is.</li>
+                    <li><strong><a href="build">Build</a>.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
+                </ol>
+                <p>The <a href="help">Help page</a> walks through each step in detail.</p>
+            </div>
+
+            <p class="muted">Catalog: @Catalog.CatalogPath</p>
         </div>
-    }
-    else
-    {
-        <div class="card ok">
-            <h2>Everything is labeled</h2>
-            <p>Every scanned file has a kind and a label. Nice work.</p>
-        </div>
-    }
+    </section>
 }
 
-<JobPanel />
-
-<div class="card">
-    <h2>How Tickle TV works, in three steps</h2>
-    <ol class="steps">
-        <li><strong><a href="scan">Scan</a>.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
-        <li><strong><a href="review">Label</a>.</strong> Most files get sorted automatically from their names. The ones that don't show up under Needs attention, where you can watch each one and say what it is.</li>
-        <li><strong><a href="build">Build</a>.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
-    </ol>
-    <p>The <a href="help">Help page</a> walks through each step in detail.</p>
-</div>
-
-<p class="muted">Catalog: @Catalog.CatalogPath</p>
+@if (!Catalog.CatalogExists)
+{
+    <JobPanel />
+    <div class="card">
+        <h2>How Tickle TV works, in three steps</h2>
+        <ol class="steps">
+            <li><strong><a href="scan">Scan</a>.</strong> Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads every file once and remembers what it found.</li>
+            <li><strong><a href="review">Label</a>.</strong> Most files get sorted automatically from their names. The ones that don't show up under Needs attention, where you can watch each one and say what it is.</li>
+            <li><strong><a href="build">Build</a>.</strong> Tickle TV turns your daily schedule into a day of television, with commercial breaks and bumpers, and hands it to ErsatzTV to play.</li>
+        </ol>
+        <p>The <a href="help">Help page</a> walks through each step in detail.</p>
+    </div>
+}
 
 @code {
     private IReadOnlyDictionary<MediaKind, int> counts = new Dictionary<MediaKind, int>();
+    private IReadOnlyList<ShowSummary> shows = [];
     private int attention;
 
     protected override void OnInitialized()
@@ -71,7 +125,8 @@ else
     {
         if (!Catalog.CatalogExists) return;
         counts = Catalog.Run(db => db.CountByKind());
-        attention = Catalog.Run(db => db.CountNeedingAttention()).Values.Sum();
+        attention = Catalog.Run(db => db.CountNeedingAttention()).Where(kv => kv.Key is not (AttentionReason.NoChapters or AttentionReason.HolidayGuess)).Sum(kv => kv.Value);
+        shows = Catalog.Run(db => db.ListShowSummaries());
     }
 
     private int Count(MediaKind kind) => counts.TryGetValue(kind, out int n) ? n : 0;

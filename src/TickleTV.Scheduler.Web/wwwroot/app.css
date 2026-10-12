@@ -259,3 +259,56 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 /* Holiday guesses waiting for a yes or no */
 .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 8px; color: var(--gold); }
 .button.small { min-height: 30px; padding: 4px 14px; font-size: 0.85rem; }
+
+/* ---------- Home, in the personnel-files style ---------- */
+.home-title { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; margin: 0 0 16px; }
+.home-title h1 { margin: 0; font-size: 2.6rem; letter-spacing: 0.01em; }
+.home-title .subtitle { color: var(--peach); font-size: 1.05rem; margin: 0; }
+.readout-row { display: flex; flex-wrap: wrap; gap: 18px 36px; align-items: flex-start; justify-content: space-between; }
+.readout-wrap { flex: 1 1 420px; min-width: 0; }
+.readout-wrap .readout-foot { margin: 6px 0 0; }
+.readout { border-collapse: collapse; color: var(--orange); font-weight: 700; font-size: 0.95rem; letter-spacing: 0.02em; text-transform: uppercase; display: block; max-height: 196px; overflow-y: auto; width: max-content; max-width: 100%; }
+.readout thead th { position: sticky; top: 0; background: var(--black); color: var(--peach); font-size: 0.72rem; text-align: right; padding: 0 18px 4px 0; }
+.readout thead th:last-child, .readout tbody td:last-child { padding-right: 6px; }
+.readout tbody td { text-align: right; padding: 1px 18px 1px 0; white-space: nowrap; }
+.pills { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; flex: 0 1 440px; }
+.pill { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 58px; padding: 0 26px; border-radius: 999px; color: var(--black); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.pill .label { font-size: 0.78rem; }
+.pill .num { font-size: 1.7rem; line-height: 1; }
+.pill.c-violet { background: var(--violet); }
+.pill.c-lavender { background: var(--lavender); }
+.pill.c-orange { background: var(--orange); }
+.pill.c-red { background: var(--red); }
+.pill.c-red.quiet { background: var(--gold); }
+.rails { display: flex; flex-direction: column; gap: 6px; margin: 18px 0; }
+.rail { display: flex; align-items: stretch; gap: 6px; }
+.rail.one { height: 22px; }
+.rail.two { height: 14px; }
+.rail .s { flex: 1 1 0; }
+.rail .s.violet { background: var(--violet); }
+.rail .s.lavender { background: var(--lavender); }
+.rail .s.red { background: var(--red); }
+.rail .sep { flex: 0 0 40px; background: var(--orange); }
+.rail.one .s.violet { flex: 5 1 0; border-bottom-left-radius: 22px; }
+.rail.one .s.lavender { flex: 4 1 0; }
+.rail.one .s.red { flex: 2 1 0; }
+.rail.two .s.stub { flex: 0 0 70px; }
+.rail.two .s.red { flex: 4 1 0; }
+.rail.two .s.violet { flex: 5 1 0; }
+.rail.two .s.lavender { flex: 1 1 0; }
+.lower { display: flex; gap: 22px; align-items: stretch; }
+.step-rail { width: 70px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+.step-rail .step { display: flex; align-items: flex-end; justify-content: flex-end; padding: 4px 6px; height: 120px; color: var(--black); font-weight: 700; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.03em; text-decoration: none; text-align: right; line-height: 1.1; }
+.step-rail .step:first-child { height: 150px; }
+.step-rail .step.grow { flex: 1 1 auto; min-height: 110px; height: auto; }
+.step-rail .step.red { background: var(--red); }
+.step-rail .step.orange { background: var(--orange); }
+.step-rail .step.lavender { background: var(--lavender); }
+.step-rail .step:hover { background: var(--cream); text-decoration: none; }
+.lower-panels { flex: 1 1 0; min-width: 0; }
+.lower-panels .card:first-child { margin-top: 0; }
+@media (max-width: 760px) {
+  .lower { flex-direction: column; }
+  .step-rail { width: auto; flex-direction: row; }
+  .step-rail .step, .step-rail .step:first-child, .step-rail .step.grow { height: 52px; min-height: 0; flex: 1 1 0; }
+}
