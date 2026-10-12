@@ -6,14 +6,16 @@
 
 <PageTitle>Categories</PageTitle>
 
-<h1>Commercial categories</h1>
-<p class="lead">Categories group commercials so the schedule can pick the right kind for each show, for example toys and cereal during cartoons, and no alcohol before 9pm. Folders like <em>90s\Cars</em> become categories automatically. Add your own here, or straight from the Needs attention page.</p>
+<PageHead Title="Commercial categories" Code="40274-05">Categories group commercials so the schedule can pick the right kind for each show, for example toys and cereal during cartoons, and no alcohol before 9pm. Folders like <em>90s\Cars</em> become categories automatically. Add your own here, or straight from the Needs attention page.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 <div class="card">
     <h2>Add a category</h2>
     <div class="inline-form">
         <input @bind="newName" placeholder="e.g. Breakfast cereal" @onkeydown="OnKey" />
-        <button class="button primary" @onclick="Add">Add category</button>
+        <button class="button primary" data-sound="keyok" @onclick="Add">Add category</button>
     </div>
     @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
 </div>
@@ -48,7 +50,17 @@ else
     </table>
 }
 
+</div>
+</section>
+
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Library", "library", 1),
+        new("Needs attention", "review", 2),
+        new("Schedule", "schedule", 3),
+        new("Help", "help"),
+    ];
     private IReadOnlyList<CatalogDb.Category> categories = [];
     private string newName = "";
     private string? notice;
