@@ -29,7 +29,7 @@
             <p class="summary">@job.Summary</p>
             @if (job.Result is ScanReport scan && scan.Unclassified.Count > 0)
             {
-                <p><a class="button" href="review">See what needs attention</a></p>
+                <p><a class="button" href="review" data-sound="deskviewer1">See what needs attention</a></p>
             }
             @if (job.Result is List<ChannelBuildReport> reports)
             {

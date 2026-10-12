@@ -31,7 +31,7 @@
     }
     <div class="inline-form">
         <input @bind="newRoot" placeholder="e.g. G:\Commercials or D:\My Videos" @onkeydown="OnKey" />
-        <button class="button" data-sound="keyok" @onclick="Add">Add folder</button>
+        <button class="button" data-sound="computerbeep_34" @onclick="Add">Add folder</button>
     </div>
     <p class="muted">Tip: open the folder in File Explorer, click the address bar at the top, copy what's there, and paste it here.</p>
     @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }

@@ -13,10 +13,10 @@
 @if (Items.Count > 0)
 {
     <div class="select-bar">
-        <button class="button secondary" @onclick="SelectAll">Select all @Items.Count shown</button>
+        <button class="button secondary" data-sound="computerbeep_4" @onclick="SelectAll">Select all @Items.Count shown</button>
         @if (selected.Count > 0)
         {
-            <button class="button secondary" @onclick="ClearSelection">Clear selection</button>
+            <button class="button secondary" data-sound="computerbeep_4" @onclick="ClearSelection">Clear selection</button>
             <span class="muted">@selected.Count selected</span>
         }
     </div>
@@ -117,9 +117,9 @@
                 }
             </div>
             <div class="actions">
-                <button class="button" @onclick="() => Watch(e.Item.Path)">Watch</button>
-                <button class="button secondary" @onclick="() => ShowInFolder(e.Item.Path)">Show in folder</button>
-                <button class="button secondary" @onclick="() => ToggleForm(e.Item.Id)">@(openForms.Contains(e.Item.Id) ? "Hide" : "Edit")</button>
+                <button class="button" data-sound="computerbeep_4" @onclick="() => Watch(e.Item.Path)">Watch</button>
+                <button class="button secondary" data-sound="computerbeep_4" @onclick="() => ShowInFolder(e.Item.Path)">Show in folder</button>
+                <button class="button secondary" data-sound="computerbeep_4" @onclick="() => ToggleForm(e.Item.Id)">@(openForms.Contains(e.Item.Id) ? "Hide" : "Edit")</button>
             </div>
         </div>
 

@@ -64,7 +64,7 @@ else
         </label>
         <div class="actions">
             <button class="button" data-sound="keyok" disabled="@Jobs.IsBusy" @onclick="Preview">Preview @DaysWord</button>
-            <button class="button primary" data-sound="keyok" disabled="@Jobs.IsBusy" @onclick="BuildNow">Build @DaysWord and send to ErsatzTV</button>
+            <button class="button primary" data-sound="computerbeep_34" disabled="@Jobs.IsBusy" @onclick="BuildNow">Build @DaysWord and send to ErsatzTV</button>
         </div>
         @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
     </div>
