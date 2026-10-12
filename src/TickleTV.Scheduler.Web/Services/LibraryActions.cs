@@ -175,7 +175,7 @@ public sealed class LibraryActions
         AttentionReason.NoCategory => "Commercials without a category",
         AttentionReason.BumperUnsorted => "Bumpers I couldn't sort",
         AttentionReason.NoChapters => "Episodes without chapter marks",
-        AttentionReason.HolidayGuess => "Holiday episodes to confirm",
+        AttentionReason.HolidayGuess => "Holiday tags to confirm",
         _ => reason.ToString(),
     };
 
