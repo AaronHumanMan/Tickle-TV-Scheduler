@@ -11,7 +11,8 @@ public static class BlockAdvisor
     /// <summary>From this slot's start to the next slot's start, wrapping past midnight; a lone slot is a whole day.</summary>
     public static TimeSpan BlockLength(ChannelConfig ch, SlotConfig slot)
     {
-        var slots = ch.Schedule.Where(s => TimeOnly.TryParse(s.Time, out _)).OrderBy(s => s.StartTime).ToList();
+        List<SlotConfig> plan = ch.PlanOf(slot)?.Slots ?? ch.Schedule;
+        var slots = plan.Where(s => TimeOnly.TryParse(s.Time, out _)).OrderBy(s => s.StartTime).ToList();
         int i = slots.IndexOf(slot);
         if (i < 0 || slots.Count == 1) return TimeSpan.FromHours(24);
         TimeSpan len = slots[(i + 1) % slots.Count].StartTime.ToTimeSpan() - slot.StartTime.ToTimeSpan();

@@ -31,17 +31,18 @@ else
         </div>
         @if (view == "grid")
         {
-            <ScheduleGrid Channels="cfg.Channels" />
+            <ScheduleGrid Channels="cfg.Channels" PlanOf="TodayPlan" />
+            @if (cfg.Channels.Any(c => c.Plans.Count > 1)) { <p class="muted">Showing today's day plan for each channel. The <a href="calendar">Calendar</a> page says which plan other dates use.</p> }
         }
         else
         {
             @foreach (var ch in cfg.Channels)
             {
-                <h3>Channel @ch.Number: @ch.Name</h3>
+                <h3>Channel @ch.Number: @ch.Name@(ch.Plans.Count > 1 ? $" (today: {TodayPlan(ch).Name})" : "")</h3>
                 <table class="table compact">
                     <thead><tr><th>From</th><th>Show</th><th>Order</th><th>Ends on</th></tr></thead>
                     <tbody>
-                    @foreach (var s in ch.Schedule.OrderBy(s => s.StartTime))
+                    @foreach (var s in TodayPlan(ch).Slots.OrderBy(s => s.StartTime))
                     {
                         <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Label@(s.ShowList.Count > 1 ? " (take turns)" : "")</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
                     }
@@ -69,6 +70,8 @@ else
 <JobPanel />
 
 @code {
+    private static DayPlan TodayPlan(ChannelConfig ch) => PlanCalendar.PlanFor(ch, DateOnly.FromDateTime(DateTime.Now));
+
     private SchedulerConfig? cfg;
     private string? notice;
     private int days = 1;

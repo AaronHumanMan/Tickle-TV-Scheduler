@@ -10,7 +10,7 @@
 <PageTitle>Schedule</PageTitle>
 
 <h1>My daily schedule</h1>
-<p class="lead">This is the grid your channels follow every day. Each time slot plays episodes back to back until the next slot starts. A slot can hold one show, or several that take turns (a block). Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
+<p class="lead">This is the grid your channels follow each day. Each time slot plays episodes back to back until the next slot starts. A slot can hold one show, or several that take turns (a block). A channel can have more than one grid, called a <strong>day plan</strong> (Normal Day, Weekend, Christmas); the <a href="calendar">Calendar</a> page says which dates use which. Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
 
 @if (cfg is null)
 {
@@ -28,7 +28,7 @@ else
     {
         <div class="card">
             <h2>All channels</h2>
-            <ScheduleGrid Channels="cfg.Channels" Expandable="true" Expanded="expanded" OnToggle="Toggle">
+            <ScheduleGrid Channels="cfg.Channels" Expandable="true" Expanded="expanded" OnToggle="Toggle" PlanOf="Selected">
                 <ChildContent Context="ch">@ChannelEditor(ch)</ChildContent>
             </ScheduleGrid>
             <p class="muted">Press <strong>edit</strong> on a channel to change its slots and settings.</p>
@@ -66,11 +66,92 @@ else
     private string view = "list";
     private readonly HashSet<string> expanded = new();
     private readonly Dictionary<string, string> holdGrid = new();
+    private readonly Dictionary<string, string> selectedPlan = new();
+    private readonly Dictionary<string, string> newNames = new();
+
+    private DayPlan Selected(ChannelConfig ch) =>
+        (selectedPlan.TryGetValue(ch.Number, out string? name) ? ch.FindPlan(name) : null) ?? ch.Default;
+
+    private void Select(ChannelConfig ch, string? name) { if (name is not null) selectedPlan[ch.Number] = name; }
+
+    private string NewName(ChannelConfig ch) => newNames.TryGetValue(ch.Number, out string? n) ? n : string.Empty;
+
+    private void Rename(ChannelConfig ch, DayPlan plan, string? name)
+    {
+        name = name?.Trim();
+        if (string.IsNullOrEmpty(name) || string.Equals(name, plan.Name, StringComparison.Ordinal)) return;
+        if (ch.FindPlan(name) is not null) { notice = $"There is already a day plan called \"{name}\"."; return; }
+        ch.RenamePlan(plan, name);
+        selectedPlan[ch.Number] = plan.Name;
+    }
+
+    private string? TakeNewName(ChannelConfig ch)
+    {
+        string name = NewName(ch).Trim();
+        if (name.Length == 0) { notice = "Type a name for the new plan first, such as Weekend or Christmas."; return null; }
+        if (ch.FindPlan(name) is not null) { notice = $"There is already a day plan called \"{name}\". Pick another name."; return null; }
+        newNames[ch.Number] = string.Empty;
+        return name;
+    }
+
+    private void CopyPlan(ChannelConfig ch, DayPlan plan)
+    {
+        if (TakeNewName(ch) is not { } name) return;
+        DayPlan copy = plan.Copy(name);
+        foreach (var s in copy.Slots) if (s.Shows.Count == 0) s.Shows.Add(string.Empty);
+        ch.Plans.Add(copy);
+        selectedPlan[ch.Number] = name;
+        notice = $"\"{name}\" is a copy of \"{plan.Name}\". Change its slots, press Save, then tell the Calendar page when to use it.";
+    }
+
+    private void BlankPlan(ChannelConfig ch)
+    {
+        if (TakeNewName(ch) is not { } name) return;
+        var plan = new DayPlan { Name = name, Slots = [new SlotConfig { Time = "06:00", Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" }] };
+        ch.Plans.Add(plan);
+        selectedPlan[ch.Number] = name;
+        notice = $"\"{name}\" starts with one slot. Add more, press Save, then tell the Calendar page when to use it.";
+    }
+
+    private void DeletePlan(ChannelConfig ch, DayPlan plan)
+    {
+        if (ch.Plans.Count < 2) return;
+        ch.RemovePlan(plan);
+        selectedPlan.Remove(ch.Number);
+        notice = $"\"{plan.Name}\" is gone, along with any calendar rules that used it. Press Save to make it final.";
+    }
+
+    private static string UsedWords(ChannelConfig ch, DayPlan plan)
+    {
+        var rules = ch.Calendar.Where(r => string.Equals(r.Plan, plan.Name, StringComparison.OrdinalIgnoreCase)).Select(PlanCalendar.Describe).ToList();
+        bool ordinary = ReferenceEquals(plan, ch.Default);
+        if (ordinary && rules.Count == 0) return ch.Plans.Count > 1 ? "Used on every day that no calendar rule claims." : "Used every day.";
+        if (ordinary) return "Used on ordinary days, and on " + string.Join("; ", rules) + ".";
+        if (rules.Count == 0) return "Not used on any date yet.";
+        return "Used on " + string.Join("; ", rules) + ".";
+    }
 
     private RenderFragment ChannelEditor(ChannelConfig ch) => __builder =>
     {
+        var plan = Selected(ch);
+        <h3>Day plan</h3>
+        <div class="plan-bar">
+            <label class="inline">Editing
+                <select value="@plan.Name" @onchange="e => Select(ch, e.Value?.ToString())">
+                    @foreach (var p in ch.Plans) { <option value="@p.Name">@p.Name@(ReferenceEquals(p, ch.Default) ? " (ordinary days)" : "")</option> }
+                </select>
+            </label>
+            <label class="inline">Name <input value="@plan.Name" @onchange="e => Rename(ch, plan, e.Value?.ToString())" /></label>
+            <label class="inline">New plan called <input placeholder="Weekend" value="@NewName(ch)" @onchange="e => newNames[ch.Number] = e.Value?.ToString() ?? string.Empty" /></label>
+            <button class="button" @onclick="() => CopyPlan(ch, plan)">Make a copy of this plan</button>
+            <button class="button secondary" @onclick="() => BlankPlan(ch)">Start a blank plan</button>
+            @if (!ReferenceEquals(plan, ch.Default)) { <button class="link" @onclick="() => ch.DefaultPlan = plan.Name">use this on ordinary days</button> }
+            @if (ch.Plans.Count > 1) { <button class="link" @onclick="() => DeletePlan(ch, plan)">delete this plan</button> }
+        </div>
+        <p class="muted">@UsedWords(ch, plan) <a href="calendar">Change on the Calendar page.</a></p>
+
         <h3>Time slots</h3>
-        @if (ch.Schedule.Count == 0)
+        @if (plan.Slots.Count == 0)
         {
             <p>No slots yet. Add one below.</p>
         }
@@ -81,7 +162,7 @@ else
                 <colgroup><col class="c-time" /><col class="c-show" /><col class="c-order" /><col class="c-pad" /><col class="c-breaks" /><col class="c-remove" /></colgroup>
                 <thead><tr><th>Starts at</th><th>Show, or shows that take turns</th><th>Episode order</th><th>Each show ends on</th><th>Breaks inside each episode<br /><span class="th-note">needs chapter marks; blank = channel setting</span></th><th></th></tr></thead>
                 <tbody>
-                @foreach (var slot in ch.Schedule.OrderBy(s => s.Time).ToList())
+                @foreach (var slot in plan.Slots.OrderBy(s => s.Time).ToList())
                 {
                     <tr>
                         <td><input type="time" value="@slot.Time" @onchange="e => slot.Time = e.Value?.ToString() ?? slot.Time" /></td>
@@ -124,7 +205,7 @@ else
                             </select>
                         </td>
                         <td><input type="number" min="0" max="8" value="@slot.MaxBreaks" placeholder="@ch.Defaults.MaxBreaks" @onchange="e => slot.MaxBreaks = int.TryParse(e.Value?.ToString(), out int n) ? n : null" /></td>
-                        <td><button class="link" @onclick="() => ch.Schedule.Remove(slot)">remove</button></td>
+                        <td><button class="link" @onclick="() => plan.Slots.Remove(slot)">remove</button></td>
                     </tr>
                 }
                 </tbody>
@@ -132,7 +213,7 @@ else
             </div>
         }
         <div class="actions">
-            <button class="button" @onclick="() => AddSlot(ch)">Add a time slot</button>
+            <button class="button" @onclick="() => AddSlot(plan)">Add a time slot</button>
         </div>
 
         <h3>Channel settings</h3>
@@ -172,7 +253,8 @@ else
             cfg = Config.LoadLoose();
             if (cfg.Channels.Count == 0)
                 cfg.Channels.Add(new ChannelConfig { Number = "1", Name = "Tickle TV", TvgId = "tickle.1" });
-            foreach (var slot in cfg.Channels.SelectMany(c => c.Schedule))
+            foreach (var c in cfg.Channels) c.NormalizePlans();
+            foreach (var slot in cfg.Channels.SelectMany(c => c.Plans.SelectMany(p => p.Slots)))
             {
                 slot.Normalize();
                 if (slot.Shows.Count == 0) slot.Shows.Add(string.Empty);
@@ -212,10 +294,10 @@ else
         if (!expanded.Remove(number)) expanded.Add(number);
     }
 
-    private void AddSlot(ChannelConfig ch)
+    private void AddSlot(DayPlan plan)
     {
-        string nextTime = ch.Schedule.Count == 0 ? "06:00" : ch.Schedule.Max(s => s.StartTime).AddHours(1).ToString("HH:mm");
-        ch.Schedule.Add(new SlotConfig { Time = nextTime, Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" });
+        string nextTime = plan.Slots.Count == 0 ? "06:00" : plan.Slots.Max(s => s.StartTime).AddHours(1).ToString("HH:mm");
+        plan.Slots.Add(new SlotConfig { Time = nextTime, Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" });
     }
 
     private static string? NullIfEmpty(object? value)
@@ -231,8 +313,11 @@ else
         foreach (var ch in cfg.Channels)
         {
             ch.Gap.HoldGrid = HoldGrid(ch) == "true";
-            if (ch.Schedule.Count == 0) problems.Add($"Channel {ch.Number} needs at least one time slot.");
-            foreach (var s in ch.Schedule)
+            foreach (var plan in ch.Plans)
+            {
+            string where = ch.Plans.Count > 1 ? $"Channel {ch.Number}, {plan.Name}" : $"Channel {ch.Number}";
+            if (plan.Slots.Count == 0) problems.Add($"{where} needs at least one time slot.");
+            foreach (var s in plan.Slots)
             {
                 if (s.Shows.Count == 0 || s.Shows.All(string.IsNullOrWhiteSpace)) problems.Add($"Channel {ch.Number}: the {s.Time} slot has no show.");
                 foreach (string name in s.Shows)
@@ -245,18 +330,19 @@ else
                     problems.Add($"Channel {ch.Number}: the {s.Time} slot lists the same show twice.");
                 if (!TimeOnly.TryParse(s.Time, out _)) problems.Add($"Channel {ch.Number}: \"{s.Time}\" isn't a valid time.");
             }
-            foreach (string t in ch.Schedule.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key))
-                problems.Add($"Channel {ch.Number}: two slots start at {t}. Give them different times.");
+            foreach (string t in plan.Slots.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key))
+                problems.Add($"{where}: two slots start at {t}. Give them different times.");
+            }
         }
         if (problems.Count > 0) { notice = "Not saved yet. Fix these first:"; return; }
 
         try
         {
-            foreach (var s in cfg.Channels.SelectMany(c => c.Schedule))
+            foreach (var s in cfg.Channels.SelectMany(c => c.Plans.SelectMany(p => p.Slots)))
                 s.Shows = s.Shows.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()).ToList();
             cfg.Validate();
             Config.Save(cfg);
-            var notes = cfg.Channels.SelectMany(c => c.Schedule.Select(s => BlockAdvisor.Advice(c, s, AverageOf))).Where(a => a is not null).ToList();
+            var notes = cfg.Channels.SelectMany(c => c.Plans.SelectMany(p => p.Slots).Select(s => BlockAdvisor.Advice(c, s, AverageOf))).Where(a => a is not null).ToList();
             notice = "Saved. Go to Build to preview or put it on air." + (notes.Count > 0 ? " One thing to know: " + string.Join(" ", notes) : "");
         }
         catch (Exception ex)

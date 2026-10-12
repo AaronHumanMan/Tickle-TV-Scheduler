@@ -20,8 +20,9 @@ public sealed record BuildResult
 }
 
 /// <summary>
-/// Turns a channel's daily grid into a playout window. Each slot airs episodes of its show back to back,
-/// each padded to its boundary, until the next slot's start time. A slot that lists several shows is a block:
+/// Turns a channel's daily grid into a playout window. Each date follows the day plan the channel's calendar
+/// picks for it; a plan takes over at its own first slot, and the previous day's last slot runs until then.
+/// Each slot airs episodes of its show back to back, each padded to its boundary, until the next slot's start time. A slot that lists several shows is a block:
 /// the shows take turns, one episode each, down the list or at random, and with hold-the-grid a show whose
 /// next episode would not fit before the next slot gives its turn to one that fits. Ads come from the channel's pool with a cooldown so
 /// the same clip does not return too soon.
@@ -36,6 +37,7 @@ public sealed class ChannelBuilder
     private readonly Random _random;
     /// <summary>The show that played last in each block (index into the slot's show list; -1 when none has yet).</summary>
     private readonly Dictionary<SlotConfig, int> _lastTurn = new();
+    private readonly Dictionary<DayPlan, List<SlotConfig>> _sorted = new();
 
     public ChannelBuilder(CatalogDb db, EpisodePicker picker, ChannelConfig channel, string schemaVersion, Action<string>? log = null, int? seed = null)
     {
@@ -83,22 +85,31 @@ public sealed class ChannelBuilder
         var recentPlays = new Dictionary<long, DateTimeOffset>(); // this build's own airings
         TimeSpan cooldown = TimeSpan.FromMinutes(_channel.Ads.CooldownMinutes);
 
-        List<SlotConfig> slots = _channel.Schedule.OrderBy(s => s.StartTime).ToList();
-        foreach (SlotConfig block in slots.Where(s => s.ShowList.Count > 1))
+        bool manyPlans = _channel.Plans.Count > 1;
+        foreach (DayPlan plan in _channel.Plans)
         {
-            // Blocks carry on from wherever they left off: in order, the show after the one that aired last;
-            // at random, anything but the one that aired last.
-            string? last = _db.LastSlotShow(_channel.Number, block.Time, from);
-            _lastTurn[block] = last is null ? -1 : IndexOfShow(block, last);
-            if (BlockAdvisor.Advice(_channel, block, _db.AverageEpisodeMs) is { } advice)
-                warnings.Add($"{block.Time} block: {advice}");
+            foreach (SlotConfig block in plan.Slots.Where(s => s.ShowList.Count > 1))
+            {
+                // Blocks carry on from wherever they left off: in order, the show after the one that aired last;
+                // at random, anything but the one that aired last.
+                string? last = _db.LastSlotShow(_channel.Number, block.Time, from);
+                _lastTurn[block] = last is null ? -1 : IndexOfShow(block, last);
+                if (BlockAdvisor.Advice(_channel, block, _db.AverageEpisodeMs) is { } advice)
+                    warnings.Add($"{(manyPlans ? plan.Name + " " : "")}{block.Time} block: {advice}");
+            }
         }
         DateTimeOffset cursor = from;
         int idCounter = 0;
+        DayPlan? currentPlan = null;
 
         while (cursor < until)
         {
-            (SlotConfig slot, DateTimeOffset nextSlotStart) = ActiveSlot(slots, cursor);
+            (SlotConfig slot, DateTimeOffset nextSlotStart, DayPlan plan) = ActiveSlot(cursor);
+            if (manyPlans && !ReferenceEquals(plan, currentPlan))
+            {
+                _log?.Invoke($"-- {cursor:ddd MMM d}: following the \"{plan.Name}\" day plan");
+                currentPlan = plan;
+            }
 
             // Hold the grid: a short stretch before the next slot that no episode fits into becomes a station break.
             long untilNextMs = (long)(nextSlotStart - cursor).TotalMilliseconds;
@@ -381,27 +392,48 @@ public sealed class ChannelBuilder
     }
 
     /// <summary>The slot whose start is the latest at or before the cursor, and when the following slot begins.</summary>
-    private static (SlotConfig Slot, DateTimeOffset NextStart) ActiveSlot(List<SlotConfig> slots, DateTimeOffset cursor)
+    /// <summary>
+    /// The slot on air at <paramref name="cursor"/>, when the next one starts, and the day plan in force. A
+    /// broadcast day begins at its plan's first slot; before that, the previous day's plan is still running its
+    /// last slot.
+    /// </summary>
+    private (SlotConfig Slot, DateTimeOffset NextStart, DayPlan Plan) ActiveSlot(DateTimeOffset cursor)
     {
-        TimeOnly now = TimeOnly.FromTimeSpan(cursor.TimeOfDay);
-        DateTimeOffset midnight = new(cursor.Date, cursor.Offset);
-
-        int index = -1;
-        for (int i = 0; i < slots.Count; i++)
-            if (slots[i].StartTime <= now) index = i;
-
-        if (index < 0)
+        DateOnly date = DateOnly.FromDateTime(cursor.DateTime);
+        DayPlan plan = PlanCalendar.PlanFor(_channel, date);
+        List<SlotConfig> slots = Sorted(plan);
+        if (cursor < At(date, slots[0].StartTime, cursor.Offset))
         {
-            // Before the first slot of the day: yesterday's last slot is still running.
-            index = slots.Count - 1;
-            DateTimeOffset first = midnight.Add(slots[0].StartTime.ToTimeSpan());
-            return (slots[index], first);
+            date = date.AddDays(-1);
+            plan = PlanCalendar.PlanFor(_channel, date);
+            slots = Sorted(plan);
         }
 
+        int index = slots.Count - 1;
+        for (int i = 0; i < slots.Count; i++)
+            if (At(date, slots[i].StartTime, cursor.Offset) <= cursor) index = i;
+
         DateTimeOffset nextStart = index + 1 < slots.Count
-            ? midnight.Add(slots[index + 1].StartTime.ToTimeSpan())
-            : midnight.AddDays(1).Add(slots[0].StartTime.ToTimeSpan());
-        return (slots[index], nextStart);
+            ? At(date, slots[index + 1].StartTime, cursor.Offset)
+            : FirstSlotStart(date.AddDays(1), cursor.Offset);
+        return (slots[index], nextStart, plan);
+    }
+
+    /// <summary>When the given date's plan takes over: its first slot that day.</summary>
+    private DateTimeOffset FirstSlotStart(DateOnly date, TimeSpan offset) =>
+        At(date, Sorted(PlanCalendar.PlanFor(_channel, date))[0].StartTime, offset);
+
+    private static DateTimeOffset At(DateOnly date, TimeOnly time, TimeSpan offset) => new(date, time, offset);
+
+    private List<SlotConfig> Sorted(DayPlan plan)
+    {
+        if (!_sorted.TryGetValue(plan, out List<SlotConfig>? slots))
+        {
+            slots = plan.Slots.OrderBy(s => s.StartTime).ToList();
+            if (slots.Count == 0) throw new InvalidDataException($"The day plan '{plan.Name}' has no time slots.");
+            _sorted[plan] = slots;
+        }
+        return slots;
     }
 
     private static string GuideTitle(CatalogEntry e) => e.Episode?.Show ?? e.Item.Title ?? Path.GetFileNameWithoutExtension(e.Item.Path);

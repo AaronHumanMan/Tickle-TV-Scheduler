@@ -1,0 +1,328 @@
+@page "/calendar"
+@using System.Globalization
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@rendermode InteractiveServer
+
+<PageTitle>Calendar</PageTitle>
+
+<h1>Calendar</h1>
+<p class="lead">A channel can have more than one <strong>day plan</strong>, each a full daily grid made on the <a href="schedule">Schedule</a> page: Normal Day, Weekend, Christmas. This page says which plan each date follows. Set rules in plain words, or tick days on the calendar and choose a plan for them. A plan takes over at its first time slot, so the night before runs to its normal end. Press <strong>Save calendar</strong> when you're done.</p>
+
+@if (cfg is null)
+{
+    <div class="card warn"><p>@notice</p></div>
+}
+else
+{
+    @if (cfg.Channels.Count > 1)
+    {
+        <div class="filters">
+            @foreach (var c in cfg.Channels)
+            {
+                <button class="chip @(c.Number == channelNumber ? "active" : "")" @onclick="() => channelNumber = c.Number">Channel @c.Number: @c.Name</button>
+            }
+        </div>
+    }
+    var ch = Channel;
+    var plans = ch.Plans;
+
+    @if (plans.Count < 2)
+    {
+        <div class="notice">This channel has only one day plan, <strong>@ch.Default.Name</strong>, so every date follows it. To use a different grid on weekends or holidays, open the <a href="schedule">Schedule</a> page, pick <em>Make a copy of this plan</em>, give the copy a name, change its slots, and come back here.</div>
+    }
+
+    <div class="card">
+        <h2>@MonthName @year</h2>
+        <div class="actions cal-nav">
+            <button class="button secondary" @onclick="() => Move(-1)">&lsaquo; Previous month</button>
+            <button class="button secondary" @onclick="GoToday">This month</button>
+            <button class="button secondary" @onclick="() => Move(1)">Next month &rsaquo;</button>
+        </div>
+
+        <div class="cal-apply">
+            <label class="inline">Use
+                <select @bind="applyPlan">
+                    <option value="">whatever the rules say</option>
+                    @foreach (var p in plans) { <option value="@p.Name">@p.Name</option> }
+                </select>
+            </label>
+            <span>on the ticked days</span>
+            <button class="button" disabled="@(ticked.Count == 0)" @onclick="Apply">Apply to @ticked.Count day@(ticked.Count == 1 ? "" : "s")</button>
+            <span class="muted">Tick:</span>
+            <button class="link" @onclick="() => Tick(d => d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))">weekdays</button>
+            <button class="link" @onclick="() => Tick(d => d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)">weekends</button>
+            <button class="link" @onclick="() => Tick(_ => true)">every day</button>
+            <button class="link" @onclick="() => ticked.Clear()">none</button>
+        </div>
+
+        <div class="table-wrap">
+        <table class="table cal">
+            <thead><tr>@foreach (string d in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }) { <th>@d</th> }</tr></thead>
+            <tbody>
+            @{
+                var days = PlanCalendar.Month(ch, year, month);
+                int lead = (int)days[0].Date.DayOfWeek;
+                var cells = Enumerable.Repeat<(DateOnly Date, DayPlan Plan, CalendarRule? Rule)?>(null, lead).Concat(days.Select(d => ((DateOnly, DayPlan, CalendarRule?)?)d)).ToList();
+                while (cells.Count % 7 != 0) cells.Add(null);
+            }
+            @for (int row = 0; row < cells.Count / 7; row++)
+            {
+                <tr>
+                @for (int col = 0; col < 7; col++)
+                {
+                    var cell = cells[row * 7 + col];
+                    if (cell is null)
+                    {
+                        <td class="cal-empty"></td>
+                        continue;
+                    }
+                    var (date, plan, rule) = cell.Value;
+                    bool isToday = date == Today;
+                    <td class="cal-day @ColourOf(plan) @(ticked.Contains(date) ? "ticked" : "") @(isToday ? "today" : "")" title="@Why(plan, rule)" @onclick="() => Toggle(date)">
+                        <div class="cal-top"><input type="checkbox" checked="@ticked.Contains(date)" @onclick:stopPropagation="true" @onchange="() => Toggle(date)" /> <span class="cal-num">@date.Day</span></div>
+                        <div class="cal-plan">@plan.Name</div>
+                        @if (rule?.Kind == RuleKind.Dates) { <div class="cal-pin">pinned</div> }
+                    </td>
+                }
+                </tr>
+            }
+            </tbody>
+        </table>
+        </div>
+        <div class="cal-legend">
+            @foreach (var p in plans) { <span class="cal-key @ColourOf(p)">@p.Name</span> }
+            <span class="muted">Hover a day to see why it uses that plan. A day marked <em>pinned</em> was set by hand here and beats every rule.</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Rules</h2>
+        <p class="muted">A pinned day wins over everything. Then a holiday or date range (the shorter one wins), then a day-of-the-week rule, then the ordinary plan.</p>
+        <div class="form">
+            <label>On an ordinary day, follow
+                <select value="@ch.Default.Name" @onchange="e => ch.DefaultPlan = e.Value?.ToString()">
+                    @foreach (var p in plans) { <option value="@p.Name">@p.Name</option> }
+                </select>
+            </label>
+        </div>
+
+        @foreach (var r in ch.Calendar.Where(r => r.Kind != RuleKind.Dates).ToList())
+        {
+            <div class="rule">
+                <label class="inline">Follow
+                    <select @bind="r.Plan">
+                        @foreach (var p in plans) { <option value="@p.Name">@p.Name</option> }
+                    </select>
+                </label>
+                @switch (r.Kind)
+                {
+                    case RuleKind.Weekdays:
+                        <span>on</span>
+                        @foreach (string day in PlanCalendar.DayKeys)
+                        {
+                            <label class="check"><input type="checkbox" checked="@HasDay(r, day)" @onchange="() => ToggleDay(r, day)" /> @Cap(day)</label>
+                        }
+                        break;
+                    case RuleKind.Holiday:
+                        <span>for</span>
+                        <select value="@SpanKey(r)" @onchange="e => SetSpan(r, e.Value?.ToString())">
+                            <option value="day">just the day of</option>
+                            <option value="week-before">the week leading up to</option>
+                            <option value="week-around">the week around</option>
+                            <option value="custom">a custom stretch around</option>
+                        </select>
+                        <select @bind="r.Holiday">
+                            @foreach (var h in Holidays.All) { <option value="@h.Key">@h.Name (@h.On(year).ToString("MMM d", CultureInfo.InvariantCulture))</option> }
+                        </select>
+                        @if (SpanKey(r) == "custom")
+                        {
+                            <label class="inline">days before <input type="number" min="0" max="60" value="@(r.DaysBefore ?? 0)" @onchange="e => r.DaysBefore = Int(e.Value)" /></label>
+                            <label class="inline">days after <input type="number" min="0" max="60" value="@(r.DaysAfter ?? 0)" @onchange="e => r.DaysAfter = Int(e.Value)" /></label>
+                        }
+                        break;
+                    case RuleKind.Range:
+                        <span>from</span>
+                        @MonthDayEditor(r, true)
+                        <span>to</span>
+                        @MonthDayEditor(r, false)
+                        <span>every year</span>
+                        break;
+                }
+                <span class="muted rule-words">(@PlanCalendar.Describe(r))</span>
+                <button class="link" @onclick="() => ch.Calendar.Remove(r)">remove</button>
+            </div>
+        }
+
+        @foreach (var r in ch.Calendar.Where(r => r.Kind == RuleKind.Dates).ToList())
+        {
+            <div class="rule">
+                <span>@r.Dates.Count day@(r.Dates.Count == 1 ? "" : "s") pinned on the calendar follow <strong>@r.Plan</strong></span>
+                <button class="link" @onclick="() => ch.Calendar.Remove(r)">unpin them all</button>
+            </div>
+        }
+
+        <div class="actions">
+            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Days = ["saturday", "sunday"] })'>Add a days-of-the-week rule</button>
+            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Holiday = "christmas", DaysBefore = 6, DaysAfter = 0 })'>Add a holiday rule</button>
+            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), From = "12-18", To = "12-26" })'>Add a date range</button>
+        </div>
+    </div>
+
+    <div class="actions save-row">
+        <button class="button primary" @onclick="Save">Save calendar</button>
+        <a class="button secondary" href="schedule">Edit the day plans</a>
+        <a class="button secondary" href="build">Go to Build</a>
+    </div>
+    @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+    @if (problems.Count > 0)
+    {
+        <div class="card warn"><ul>@foreach (string p in problems) { <li>@p</li> }</ul></div>
+    }
+}
+
+@code {
+    private SchedulerConfig? cfg;
+    private string? notice;
+    private List<string> problems = [];
+    private string channelNumber = "";
+    private int year, month;
+    private string applyPlan = "";
+    private readonly HashSet<DateOnly> ticked = new();
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+    private string MonthName => CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month);
+    private ChannelConfig Channel => cfg!.Channels.FirstOrDefault(c => c.Number == channelNumber) ?? cfg!.Channels[0];
+
+    protected override void OnInitialized()
+    {
+        year = Today.Year;
+        month = Today.Month;
+        try
+        {
+            cfg = Config.LoadLoose();
+            if (cfg.Channels.Count == 0) { cfg = null; notice = "There are no channels yet. Add one on the Channels page first."; return; }
+            foreach (var c in cfg.Channels) c.NormalizePlans();
+            channelNumber = cfg.Channels[0].Number;
+        }
+        catch (Exception ex)
+        {
+            notice = "I couldn't read the settings file: " + ex.Message;
+        }
+    }
+
+    private void Move(int delta)
+    {
+        var d = new DateOnly(year, month, 1).AddMonths(delta);
+        year = d.Year; month = d.Month;
+        ticked.Clear();
+    }
+
+    private void GoToday() { year = Today.Year; month = Today.Month; ticked.Clear(); }
+
+    private void Toggle(DateOnly date) { if (!ticked.Remove(date)) ticked.Add(date); }
+
+    private void Tick(Func<DateOnly, bool> which)
+    {
+        for (var d = new DateOnly(year, month, 1); d.Month == month; d = d.AddDays(1))
+            if (which(d)) ticked.Add(d);
+    }
+
+    private void Apply()
+    {
+        var ch = Channel;
+        foreach (DateOnly d in ticked) PlanCalendar.PinDate(ch, d, string.IsNullOrEmpty(applyPlan) ? null : applyPlan);
+        notice = string.IsNullOrEmpty(applyPlan)
+            ? $"{ticked.Count} day(s) now follow the rules again. Press Save calendar to keep this."
+            : $"{ticked.Count} day(s) pinned to {applyPlan}. Press Save calendar to keep this.";
+        ticked.Clear();
+    }
+
+    private string ColourOf(DayPlan plan)
+    {
+        int i = Channel.Plans.IndexOf(plan);
+        return "c" + (i < 0 ? 1 : i % 6 + 1);
+    }
+
+    private string Why(DayPlan plan, CalendarRule? rule) => rule is null
+        ? $"{plan.Name}: the ordinary plan"
+        : $"{plan.Name}: {PlanCalendar.Describe(rule)}";
+
+    private static string Cap(string s) => char.ToUpperInvariant(s[0]) + s[1..3];
+
+    private static bool HasDay(CalendarRule r, string day) => r.Days.Any(d => string.Equals(d.Trim(), day, StringComparison.OrdinalIgnoreCase));
+
+    private static void ToggleDay(CalendarRule r, string day)
+    {
+        if (!HasDay(r, day)) r.Days.Add(day);
+        else r.Days.RemoveAll(d => string.Equals(d.Trim(), day, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string SpanKey(CalendarRule r) => (r.DaysBefore ?? 0, r.DaysAfter ?? 0) switch
+    {
+        (0, 0) => "day",
+        (6, 0) => "week-before",
+        (3, 3) => "week-around",
+        _ => "custom",
+    };
+
+    private static void SetSpan(CalendarRule r, string? key)
+    {
+        (r.DaysBefore, r.DaysAfter) = key switch
+        {
+            "day" => (0, 0),
+            "week-before" => (6, 0),
+            "week-around" => (3, 3),
+            _ => (r.DaysBefore ?? 2, r.DaysAfter ?? 2),
+        };
+    }
+
+    private static int? Int(object? value) => int.TryParse(value?.ToString(), out int n) ? Math.Max(0, n) : 0;
+
+    private static string OtherPlan(ChannelConfig ch) =>
+        ch.Plans.FirstOrDefault(p => !ReferenceEquals(p, ch.Default))?.Name ?? ch.Default.Name;
+
+    private RenderFragment MonthDayEditor(CalendarRule r, bool from) => __builder =>
+    {
+        var md = CalendarRule.ParseMonthDay(from ? r.From : r.To) ?? (1, 1);
+        <select value="@md.Month" @onchange="e => SetMonthDay(r, from, Int(e.Value) ?? 1, md.Day)">
+            @for (int m = 1; m <= 12; m++) { <option value="@m">@CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(m)</option> }
+        </select>
+        <input class="day-num" type="number" min="1" max="31" value="@md.Day" @onchange="e => SetMonthDay(r, from, md.Month, Int(e.Value) ?? 1)" />
+    };
+
+    private static void SetMonthDay(CalendarRule r, bool from, int m, int d)
+    {
+        m = Math.Clamp(m, 1, 12);
+        d = Math.Clamp(d, 1, DateTime.DaysInMonth(2000, m));
+        string text = $"{m:00}-{d:00}";
+        if (from) r.From = text; else r.To = text;
+    }
+
+    private void Save()
+    {
+        if (cfg is null) return;
+        problems = [];
+        notice = null;
+        foreach (var c in cfg.Channels)
+        {
+            foreach (var r in c.Calendar)
+            {
+                if (r.Kind == RuleKind.Empty) problems.Add($"Channel {c.Number}: a rule for {r.Plan} has no days ticked. Tick at least one day or remove it.");
+                else if (c.FindPlan(r.Plan) is null) problems.Add($"Channel {c.Number}: a rule points at a day plan called \"{r.Plan}\" that no longer exists.");
+            }
+        }
+        if (problems.Count > 0) { notice = "Not saved yet. Fix these first:"; return; }
+        try
+        {
+            cfg.Validate();
+            Config.Save(cfg);
+            notice = "Saved. Go to Build to put it on air.";
+        }
+        catch (Exception ex)
+        {
+            notice = "I couldn't save: " + ex.Message;
+        }
+    }
+}

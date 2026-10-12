@@ -19,6 +19,7 @@
         <tr>
             <td class="g-ch">
                 <strong>@ch.Number</strong> @ch.Name
+                @if (ch.Plans.Count > 1) { <div class="g-plan">@Plan(ch).Name</div> }
                 @if (Expandable)
                 {
                     <br /><button class="link" @onclick="() => OnToggle.InvokeAsync(ch.Number)">@(open ? "hide settings" : "edit")</button>
@@ -47,15 +48,19 @@
     [Parameter] public HashSet<string> Expanded { get; set; } = new();
     [Parameter] public EventCallback<string> OnToggle { get; set; }
     [Parameter] public RenderFragment<ChannelConfig>? ChildContent { get; set; }
+    /// <summary>Which plan to draw for a channel. Default: the channel's ordinary plan.</summary>
+    [Parameter] public Func<ChannelConfig, DayPlan>? PlanOf { get; set; }
 
     private sealed record Block(string Show, string Time, int Span, int Colour, string Title);
 
     private static string Hour(int h) => h == 0 ? "12a" : h < 12 ? $"{h}a" : h == 12 ? "12p" : $"{h - 12}p";
 
     /// <summary>Which slot owns each hour, then merge runs of the same slot into one cell.</summary>
-    private static List<Block> Blocks(ChannelConfig ch)
+    private DayPlan Plan(ChannelConfig ch) => PlanOf?.Invoke(ch) ?? ch.Default;
+
+    private List<Block> Blocks(ChannelConfig ch)
     {
-        var slots = ch.Schedule.Where(s => TimeOnly.TryParse(s.Time, out _)).OrderBy(s => s.StartTime).ToList();
+        var slots = Plan(ch).Slots.Where(s => TimeOnly.TryParse(s.Time, out _)).OrderBy(s => s.StartTime).ToList();
         var blocks = new List<Block>();
         if (slots.Count == 0)
         {

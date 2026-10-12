@@ -1,6 +1,7 @@
 using TickleTV.Scheduler.Core.Engine;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using System.Globalization;
 
 namespace TickleTV.Scheduler.Core.Config;
 
@@ -51,7 +52,7 @@ public sealed class SchedulerConfig
     {
         var serializer = new SerializerBuilder()
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
+            .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitEmptyCollections)
             .Build();
         string yaml = "# Tickle TV Scheduler config. Edited by the app; paths are relative to this file.\n\n" + serializer.Serialize(this);
         string tmp = path + ".tmp";
@@ -66,8 +67,19 @@ public sealed class SchedulerConfig
         {
             if (string.IsNullOrWhiteSpace(ch.Number)) throw new InvalidDataException("Every channel needs a number.");
             if (string.IsNullOrWhiteSpace(ch.TvgId)) ch.TvgId = $"tickle.{ch.Number}";
-            if (ch.Schedule.Count == 0) throw new InvalidDataException($"Channel {ch.Number} has no schedule slots.");
-            foreach (SlotConfig slot in ch.Schedule)
+            ch.NormalizePlans();
+            if (ch.Plans.Count == 0 || ch.Plans.All(p => p.Slots.Count == 0)) throw new InvalidDataException($"Channel {ch.Number} has no schedule slots.");
+            foreach (DayPlan plan in ch.Plans)
+            {
+                if (string.IsNullOrWhiteSpace(plan.Name)) throw new InvalidDataException($"Channel {ch.Number}: every day plan needs a name.");
+                if (plan.Slots.Count == 0) throw new InvalidDataException($"Channel {ch.Number}: the day plan '{plan.Name}' has no time slots.");
+            }
+            foreach (string dup in ch.Plans.GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key))
+                throw new InvalidDataException($"Channel {ch.Number}: two day plans are both called '{dup}'.");
+            if (ch.DefaultPlan is not null && ch.FindPlan(ch.DefaultPlan) is null)
+                throw new InvalidDataException($"Channel {ch.Number}: the default day plan '{ch.DefaultPlan}' does not exist.");
+            foreach (CalendarRule rule in ch.Calendar) rule.Validate(ch);
+            foreach (SlotConfig slot in ch.Plans.SelectMany(p => p.Slots))
             {
                 slot.Normalize();
                 if (slot.ShowList.Count == 0 || slot.ShowList.Any(string.IsNullOrWhiteSpace))
@@ -111,7 +123,191 @@ public sealed class ChannelConfig
     public BumpersConfig Bumpers { get; set; } = new();
     public FillerConfig Filler { get; set; } = new();
     public GapConfig Gap { get; set; } = new();
-    public List<SlotConfig> Schedule { get; set; } = [];
+
+    /// <summary>The channel's day plans: each a full daily grid. The calendar says which one each date follows.</summary>
+    public List<DayPlan> Plans { get; set; } = [];
+    /// <summary>Which plan a date follows when no rule says otherwise. Null means the first plan.</summary>
+    public string? DefaultPlan { get; set; }
+    /// <summary>Rules that pick a plan for dates: weekdays, holidays, yearly ranges, or days pinned on the calendar.</summary>
+    public List<CalendarRule> Calendar { get; set; } = [];
+
+    /// <summary>The old single-grid form, <c>schedule:</c>. Moved into <see cref="Plans"/> by <see cref="NormalizePlans"/>.</summary>
+    [YamlMember(Alias = "schedule")]
+    public List<SlotConfig>? LegacySchedule { get; set; }
+
+    /// <summary>The default plan's slots: the grid the channel follows on an ordinary day.</summary>
+    [YamlIgnore]
+    public List<SlotConfig> Schedule
+    {
+        get => Default.Slots;
+        set => Default.Slots = value;
+    }
+
+    /// <summary>The default day plan, created as "Every day" when the channel has none yet.</summary>
+    [YamlIgnore]
+    public DayPlan Default
+    {
+        get
+        {
+            NormalizePlans();
+            if (Plans.Count == 0) Plans.Add(new DayPlan { Name = DayPlan.DefaultName });
+            return (DefaultPlan is null ? null : FindPlan(DefaultPlan)) ?? Plans[0];
+        }
+    }
+
+    public DayPlan? FindPlan(string? name) =>
+        name is null ? null : Plans.FirstOrDefault(p => string.Equals(p.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The plan that holds this slot, for anything that needs the slot's neighbours.</summary>
+    public DayPlan? PlanOf(SlotConfig slot) => Plans.FirstOrDefault(p => p.Slots.Contains(slot));
+
+    /// <summary>Folds the old <c>schedule:</c> list into the plans so the file always has one shape.</summary>
+    public void NormalizePlans()
+    {
+        if (LegacySchedule is null) return;
+        if (LegacySchedule.Count > 0)
+        {
+            DayPlan? target = FindPlan(DayPlan.DefaultName);
+            if (target is null) Plans.Insert(0, target = new DayPlan { Name = DayPlan.DefaultName });
+            target.Slots = LegacySchedule;
+        }
+        LegacySchedule = null;
+    }
+
+    /// <summary>Renames a plan everywhere it is referred to: the default and the calendar rules.</summary>
+    public void RenamePlan(DayPlan plan, string newName)
+    {
+        string old = plan.Name;
+        plan.Name = newName.Trim();
+        if (string.Equals(DefaultPlan, old, StringComparison.OrdinalIgnoreCase)) DefaultPlan = plan.Name;
+        foreach (CalendarRule r in Calendar.Where(r => string.Equals(r.Plan, old, StringComparison.OrdinalIgnoreCase))) r.Plan = plan.Name;
+    }
+
+    /// <summary>Removes a plan and every rule that pointed at it. The first remaining plan becomes the default if needed.</summary>
+    public void RemovePlan(DayPlan plan)
+    {
+        Plans.Remove(plan);
+        Calendar.RemoveAll(r => string.Equals(r.Plan, plan.Name, StringComparison.OrdinalIgnoreCase));
+        if (string.Equals(DefaultPlan, plan.Name, StringComparison.OrdinalIgnoreCase)) DefaultPlan = null;
+    }
+}
+
+/// <summary>A named 24-hour grid. A channel follows one plan per day; the calendar picks which.</summary>
+public sealed class DayPlan
+{
+    public const string DefaultName = "Every day";
+    public string Name { get; set; } = DefaultName;
+    public List<SlotConfig> Slots { get; set; } = [];
+
+    /// <summary>A deep copy with a new name, for "make a copy of this plan".</summary>
+    public DayPlan Copy(string name) => new()
+    {
+        Name = name,
+        Slots = Slots.Select(s => new SlotConfig
+        {
+            Time = s.Time, Shows = [.. s.ShowList], Turns = s.Turns, Order = s.Order, Pad = s.Pad,
+            MaxBreaks = s.MaxBreaks, MinActSeconds = s.MinActSeconds, PreRoll = s.PreRoll, PostRoll = s.PostRoll,
+        }).ToList(),
+    };
+}
+
+public enum RuleKind { Weekdays, Holiday, Range, Dates, Empty }
+
+/// <summary>
+/// One calendar rule: "plan X on these weekdays", "plan X for this holiday (and days around it)",
+/// "plan X from MM-dd to MM-dd every year", or "plan X on these exact dates" (pinned on the calendar page).
+/// </summary>
+public sealed class CalendarRule
+{
+    public string Plan { get; set; } = "";
+    /// <summary>monday .. sunday</summary>
+    public List<string> Days { get; set; } = [];
+    /// <summary>A key from <see cref="Holidays.All"/>, such as christmas or thanksgiving.</summary>
+    public string? Holiday { get; set; }
+    public int? DaysBefore { get; set; }
+    public int? DaysAfter { get; set; }
+    /// <summary>MM-dd, inclusive, every year. A range may wrap past New Year (12-20 to 01-03).</summary>
+    public string? From { get; set; }
+    public string? To { get; set; }
+    /// <summary>yyyy-MM-dd</summary>
+    public List<string> Dates { get; set; } = [];
+
+    [YamlIgnore]
+    public RuleKind Kind =>
+        Dates.Count > 0 ? RuleKind.Dates
+        : Holiday is not null ? RuleKind.Holiday
+        : From is not null || To is not null ? RuleKind.Range
+        : Days.Count > 0 ? RuleKind.Weekdays
+        : RuleKind.Empty;
+
+    [YamlIgnore]
+    public IReadOnlySet<DateOnly> ParsedDates => Dates
+        .Select(d => DateOnly.TryParseExact(d.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly x) ? x : (DateOnly?)null)
+        .Where(d => d is not null).Select(d => d!.Value).ToHashSet();
+
+    public bool Covers(DateOnly date) => Kind switch
+    {
+        RuleKind.Weekdays => Days.Any(d => string.Equals(d.Trim(), date.DayOfWeek.ToString(), StringComparison.OrdinalIgnoreCase)),
+        RuleKind.Holiday => HolidaySpan(date.Year) is { } span && date >= span.Start && date <= span.End
+                            || HolidaySpan(date.Year - 1) is { } prev && date >= prev.Start && date <= prev.End
+                            || HolidaySpan(date.Year + 1) is { } next && date >= next.Start && date <= next.End,
+        RuleKind.Range => InRange(date),
+        RuleKind.Dates => ParsedDates.Contains(date),
+        _ => false,
+    };
+
+    /// <summary>How many days the rule covers in a year; shorter rules are more specific and win.</summary>
+    public int SpanDays(int year) => Kind switch
+    {
+        RuleKind.Holiday => 1 + (DaysBefore ?? 0) + (DaysAfter ?? 0),
+        RuleKind.Range when ParseMonthDay(From) is { } f && ParseMonthDay(To) is { } t =>
+            (int)(ToDate(t, year) < ToDate(f, year) ? ToDate(t, year + 1).DayNumber - ToDate(f, year).DayNumber : ToDate(t, year).DayNumber - ToDate(f, year).DayNumber) + 1,
+        RuleKind.Dates => Dates.Count,
+        _ => 366,
+    };
+
+    public (DateOnly Start, DateOnly End)? HolidaySpan(int year)
+    {
+        if (Holidays.Find(Holiday) is not { } h) return null;
+        DateOnly day = h.On(year);
+        return (day.AddDays(-(DaysBefore ?? 0)), day.AddDays(DaysAfter ?? 0));
+    }
+
+    private bool InRange(DateOnly date)
+    {
+        if (ParseMonthDay(From) is not { } f || ParseMonthDay(To) is not { } t) return false;
+        DateOnly start = ToDate(f, date.Year), end = ToDate(t, date.Year);
+        if (end >= start) return date >= start && date <= end;
+        // Wraps past New Year: Dec 20 to Jan 3 covers late December and early January.
+        return date >= start || date <= end;
+    }
+
+    public static (int Month, int Day)? ParseMonthDay(string? text)
+    {
+        if (text is null) return null;
+        string[] parts = text.Trim().Split('-', '/');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out int m) || !int.TryParse(parts[1], out int d)) return null;
+        if (m is < 1 or > 12 || d < 1 || d > DateTime.DaysInMonth(2000, m)) return null;
+        return (m, d);
+    }
+
+    private static DateOnly ToDate((int Month, int Day) md, int year) =>
+        new(year, md.Month, Math.Min(md.Day, DateTime.DaysInMonth(year, md.Month)));
+
+    public void Validate(ChannelConfig ch)
+    {
+        if (Kind == RuleKind.Empty) throw new InvalidDataException($"Channel {ch.Number}: a calendar rule for '{Plan}' does not say when it applies.");
+        if (ch.FindPlan(Plan) is null) throw new InvalidDataException($"Channel {ch.Number}: a calendar rule points at a day plan '{Plan}' that does not exist.");
+        foreach (string d in Days)
+            if (!PlanCalendar.DayKeys.Contains(d.Trim().ToLowerInvariant()))
+                throw new InvalidDataException($"Channel {ch.Number}: '{d}' is not a day of the week. Use monday to sunday.");
+        if (Holiday is not null && Holidays.Find(Holiday) is null)
+            throw new InvalidDataException($"Channel {ch.Number}: unknown holiday '{Holiday}'. Known: {string.Join(", ", Holidays.All.Select(h => h.Key))}.");
+        if (Kind == RuleKind.Range && (ParseMonthDay(From) is null || ParseMonthDay(To) is null))
+            throw new InvalidDataException($"Channel {ch.Number}: a date range needs both from and to as MM-dd, such as 12-18 and 12-26.");
+        if (Kind == RuleKind.Dates && ParsedDates.Count != Dates.Count)
+            throw new InvalidDataException($"Channel {ch.Number}: a pinned date is not in yyyy-MM-dd form.");
+    }
 }
 
 /// <summary>
