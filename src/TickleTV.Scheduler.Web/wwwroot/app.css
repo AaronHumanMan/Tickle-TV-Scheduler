@@ -69,8 +69,8 @@ ul, ol { padding-left: 1.3em; }
 
 /* ---------- panels: an L-shaped frame (left bar + top bar) instead of a bordered card ---------- */
 .card { position: relative; background: var(--black); padding: 18px 20px 16px 26px; margin: 18px 0; }
-.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; background: var(--peach); border-radius: 12px 0 0 12px; }
-.card::after { content: ""; position: absolute; left: 12px; right: 0; top: 0; height: 6px; background: var(--peach); border-radius: 0 6px 6px 0; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; background: var(--peach); }
+.card::after { content: ""; position: absolute; left: 12px; right: 0; top: 0; height: 6px; background: var(--peach); }
 .card.ok::before, .card.ok::after { background: var(--gold); }
 .card.warn::before, .card.warn::after { background: var(--red); }
 .card.bulk::before, .card.bulk::after { background: var(--sky); }
