@@ -229,7 +229,7 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 .table.grid td.g-ch .g-plan { color: var(--gold); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .cal-nav { margin-bottom: 10px; }
 .cal-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0 12px; }
-.table.cal { table-layout: fixed; }
+.table.cal { table-layout: fixed; border-spacing: 3px; }
 .table.cal th { text-align: center; }
 .table.cal td { height: 84px; vertical-align: top; padding: 6px 8px; border-radius: 10px; cursor: pointer; color: var(--black); }
 .table.cal td.cal-empty { background: transparent; cursor: default; }
