@@ -6,3 +6,6 @@ obj/
 *.swp
 TestResults/
 publish/
+installer/publish/
+installer/dist/
+installer/tools/

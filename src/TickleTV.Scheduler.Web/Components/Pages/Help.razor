@@ -12,6 +12,7 @@
     <h2>Step 1: Scan your videos</h2>
     <p>Scanning tells Tickle TV where your files are. It reads each file once to learn how long it is and whether it has chapter marks, then sorts it by its name, or by the details in a <em>.nfo</em> file next to it when there is one.</p>
     <p>Open the <a href="scan">Scan</a> page. Add each folder that holds videos (subfolders are included), then press <strong>Scan all my folders</strong>. A progress bar shows how far along it is, and you can keep using the app meanwhile. Scanning a big library takes a while, about ten files per second. Scan again any time you add files; only new or changed files are read.</p>
+    <p>Scanning uses a free helper program called <em>ffprobe</em>. If it is missing, the Scan page says so and explains, step by step, where to get it and where to put it.</p>
     <h3>How files get sorted</h3>
     <ul>
         <li><strong>Details files (.nfo):</strong> if you use Kodi, Jellyfin, Emby, tinyMediaManager or a similar program, it leaves a small <em>.nfo</em> file next to each video, and a <em>tvshow.nfo</em> in the show's folder. Tickle TV reads those first: show name, season and episode number, episode title, air date and genre. They beat anything guessed from the file name, and rescanning picks up any <em>.nfo</em> file that has changed. Your own answers on the Needs attention page still win over both.</li>
@@ -76,6 +77,17 @@
     <h2>Step 4: Build the schedule</h2>
     <p>Tickle TV fills each slot with episodes, adds commercial breaks between scenes, and pads each show so the next one starts on time.</p>
     <p>Open the <a href="build">Build</a> page. <strong>Preview</strong> shows the next 24 hours as a list of programmes without changing anything, along with anything worth a look, such as a show that runs past the next slot. <strong>Build and send to ErsatzTV</strong> writes it for real. Build once a day, or whenever you change the schedule. It joins in at the end of whatever is playing, so the show on air is never interrupted.</p>
+</div>
+
+<div class="card">
+    <h2>Keeping it running: the icon by the clock</h2>
+    <p>Once installed, Tickle TV starts when you sign in to Windows (you can untick that during setup) and sits quietly as a small icon by the clock on your taskbar. There is no window to keep open. Double-click the icon, or open <em>Tickle TV</em> from the Start Menu, and it opens in your web browser. Right-click the icon for <em>Build tonight's schedule now</em> and <em>Quit Tickle TV</em>.</p>
+    <h3>Building every night on its own</h3>
+    <p>While Tickle TV is running, it builds the next two days of television every night at 3am, so the channel never runs out, even if you forget. If the computer was off at the time, it catches up as soon as Tickle TV starts. Change the time, how many days it writes, or switch it off on the <a href="build">Build</a> page, which also shows how the last automatic build went. The Home page warns you if one didn't work.</p>
+    <h3>ErsatzTV has to be running too</h3>
+    <p>Tickle TV only writes the schedule. ErsatzTV is the program that streams your channel, so it has to be running for anyone to watch. Tickle TV finds ErsatzTV's channel folders through its <em>lineup.json</em> file, shown on the Channels page.</p>
+    <h3>Where your things are kept</h3>
+    <p>Your settings, your catalog and the notes from each automatic build live in <em>%LOCALAPPDATA%\TickleTV</em> (paste that into File Explorer's address bar). Uninstalling Tickle TV leaves that folder alone, so your labels survive a reinstall.</p>
 </div>
 
 <div class="card">

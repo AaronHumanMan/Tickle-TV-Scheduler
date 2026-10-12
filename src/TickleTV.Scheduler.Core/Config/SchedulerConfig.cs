@@ -13,6 +13,8 @@ public sealed class SchedulerConfig
     public List<string> MediaRoots { get; set; } = [];
     public NextConfig Next { get; set; } = new();
     public UiConfig Ui { get; set; } = new();
+    /// <summary>The nightly automatic build the app runs on its own.</summary>
+    public AutoBuildConfig AutoBuild { get; set; } = new();
     public List<ChannelConfig> Channels { get; set; } = [];
 
     /// <summary>Folder the config was loaded from; set by <see cref="Load"/>.</summary>

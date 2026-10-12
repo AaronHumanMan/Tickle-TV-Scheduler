@@ -1,6 +1,7 @@
 @page "/scan"
 @using TickleTV.Scheduler.Core.Catalog
 @using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Core.Media
 @using TickleTV.Scheduler.Web.Services
 @inject ConfigStore Config
 @inject JobRunner Jobs
@@ -14,6 +15,19 @@
 <section class="lower">
 <SideRail Links="rail" />
 <div class="lower-panels">
+@if (ffprobe is null)
+{
+    <div class="card warn">
+        <h2>A helper program is missing: ffprobe</h2>
+        <p>Tickle TV uses a free program called <strong>ffprobe</strong> (part of FFmpeg) to read how long each video is and where its chapter marks are. I couldn't find it on this computer, so scanning won't work yet. It takes two minutes to fix:</p>
+        <ol class="steps">
+            <li>Download FFmpeg for Windows from <a href="https://www.gyan.dev/ffmpeg/builds/" target="_blank" rel="noopener">gyan.dev/ffmpeg/builds</a>. The "essentials" zip is fine.</li>
+            <li>Open the zip, open its <em>bin</em> folder, and copy <em>ffprobe.exe</em>.</li>
+            <li>Paste it into this folder (create the folder if it isn't there): <code>@toolsFolder</code></li>
+            <li>Come back here and refresh the page. This message goes away when ffprobe is found.</li>
+        </ol>
+    </div>
+}
 <div class="card">
     <h2>My media folders</h2>
     @if (roots.Count == 0)
@@ -40,7 +54,8 @@
 <div class="card">
     <h2>Start a scan</h2>
     <p>Scanning a big library takes a while, about ten files a second. You can keep using the app while it runs.</p>
-    <button class="button primary" data-sound="keyok" disabled="@(roots.Count == 0 || Jobs.IsBusy)" @onclick="ScanAll">Scan all my folders</button>
+    <button class="button primary" data-sound="keyok" disabled="@(roots.Count == 0 || Jobs.IsBusy || ffprobe is null)" @onclick="ScanAll">Scan all my folders</button>
+    @if (ffprobe is not null) { <p class="muted small">Video reader: @ffprobe</p> }
 </div>
 
 <JobPanel />
@@ -58,9 +73,12 @@
     private List<string> roots = [];
     private string newRoot = "";
     private string? notice;
+    private string? ffprobe;
+    private readonly string toolsFolder = Path.Combine(ConfigLocations.DataFolder, "tools");
 
     protected override void OnInitialized()
     {
+        ffprobe = Ffprobe.Locate();
         roots = Config.LoadLoose().MediaRoots.ToList();
         Jobs.Changed += OnJobChanged;
     }

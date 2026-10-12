@@ -3,6 +3,7 @@
 @using TickleTV.Scheduler.Web.Services
 @inject CatalogAccess Catalog
 @inject JobRunner Jobs
+@inject NightlyBuilder Nightly
 @rendermode InteractiveServer
 
 <PageTitle>Tickle TV</PageTitle>
@@ -76,6 +77,15 @@ else
                 <div class="card ok">
                     <h2>Everything is labeled</h2>
                     <p>Every scanned file has a kind and a label. Nice work.</p>
+                </div>
+            }
+
+            @if (Nightly.Record is { Failed: true, FinishedAt: not null } failedBuild)
+            {
+                <div class="card warn">
+                    <h2>The automatic build didn't work</h2>
+                    <p>@failedBuild.Summary</p>
+                    <a class="button" href="build" data-sound="keyok">Go to Build</a>
                 </div>
             }
 

@@ -112,3 +112,19 @@ dotnet run --project src/TickleTV.Scheduler.Cli -- build --config tickletv.yaml
 - `src/TickleTV.Scheduler.Core`: catalog (SQLite, scanner, filename parser), playout and XMLTV models, ffprobe wrapper, break planner, padding math, break filler.
 - `src/TickleTV.Scheduler.Cli`: command-line entry point.
 - `tests/TickleTV.Scheduler.Tests`: xunit tests.
+
+## Install on Windows (for people who just want the program)
+
+Run `TickleTV-Setup-<version>.exe` from the releases. It installs per user (no administrator prompt), adds **Tickle TV** to the Start Menu, and can start Tickle TV when you sign in. Tickle TV runs as an icon by the clock and opens in your browser at http://localhost:5062. While it runs, it builds the next two days of television every night at 3am; change that on the Build page.
+
+Scanning needs `ffprobe.exe` (part of FFmpeg). The Scan page explains where to get it and where to put it if it is missing. The app looks for it in its own `tools` folder, next to the program, in `%LOCALAPPDATA%\TickleTV\tools`, and then on the PATH.
+
+## Build the installer
+
+Needs the .NET 10 SDK and Inno Setup 6 (`winget install JRSoftware.InnoSetup`).
+
+```
+powershell -File installer\build.ps1
+```
+
+This publishes the web app self-contained for 64-bit Windows into `installer\publish` and writes `installer\dist\TickleTV-Setup-<version>.exe`. The version comes from `src\TickleTV.Scheduler.Web\TickleTV.Scheduler.Web.csproj`, or pass `-Version 1.2.3`. To bundle ffprobe, drop `ffprobe.exe` (and FFmpeg's licence text) into `installer\tools` before building. The icon is drawn by `installer\make-icon.py`.

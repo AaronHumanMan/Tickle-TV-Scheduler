@@ -25,7 +25,38 @@ public sealed class Ffprobe : Catalog.IMediaProber
 
     public Ffprobe(string? ffprobePath = null)
     {
-        _ffprobePath = string.IsNullOrWhiteSpace(ffprobePath) ? "ffprobe" : ffprobePath;
+        _ffprobePath = string.IsNullOrWhiteSpace(ffprobePath) ? Locate() ?? "ffprobe" : ffprobePath;
+    }
+
+    private static readonly string ExeName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+
+    /// <summary>Folders where a bundled or hand-placed ffprobe is looked for before the PATH: the program's tools folder, the program folder, and the data folder's tools folder.</summary>
+    public static IReadOnlyList<string> SearchFolders =>
+    [
+        Path.Combine(AppContext.BaseDirectory, "tools"),
+        AppContext.BaseDirectory,
+        Path.Combine(Config.ConfigLocations.DataFolder, "tools"),
+    ];
+
+    /// <summary>The full path of the ffprobe that will be used, or null when none can be found anywhere.</summary>
+    public static string? Locate()
+    {
+        foreach (string folder in SearchFolders)
+        {
+            string candidate = Path.Combine(folder, ExeName);
+            if (File.Exists(candidate)) return candidate;
+        }
+        string path = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (string dir in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                string candidate = Path.Combine(dir.Trim('"'), ExeName);
+                if (File.Exists(candidate)) return candidate;
+            }
+            catch (ArgumentException) { /* a bad PATH entry is not our problem */ }
+        }
+        return null;
     }
 
     public async Task<MediaProbe> ProbeAsync(string path, CancellationToken ct = default)

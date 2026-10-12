@@ -4,6 +4,7 @@
 @using TickleTV.Scheduler.Web.Services
 @inject ConfigStore Config
 @inject JobRunner Jobs
+@inject NightlyBuilder Nightly
 @implements IDisposable
 @rendermode InteractiveServer
 
@@ -68,6 +69,30 @@ else
         </div>
         @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
     </div>
+
+    <div class="card">
+        <h2>Build automatically every night</h2>
+        <p>While Tickle TV is running (look for its icon by the clock), it can build the next days of television on its own, so the channel never runs out even if you forget. If the computer was off at build time, it catches up as soon as Tickle TV starts again.</p>
+        <div class="form">
+            <label class="check"><input type="checkbox" @bind="autoEnabled" /> Build on its own every night</label>
+            <label>At what time <input type="time" @bind="autoTime" /></label>
+            <label>How many days each time <input type="number" min="1" max="@BuildOptions.MaxDays" @bind="autoDays" /></label>
+            <button class="button primary" data-sound="keyok" @onclick="SaveAuto">Save</button>
+        </div>
+        <p class="muted">@AutoWords()</p>
+        @if (!string.IsNullOrEmpty(autoNotice)) { <div class="notice">@autoNotice</div> }
+        @if (Nightly.Record.FinishedAt is { } finished)
+        {
+            <p class="@(Nightly.Record.Failed ? "why" : "summary")">Last automatic build: @finished.ToString("dddd d MMMM, h:mm tt"). @Nightly.Record.Summary</p>
+        }
+        else if (Nightly.Record.StartedAt is not null)
+        {
+            <p class="muted">The automatic build is running now.</p>
+        }
+        <div class="actions">
+            <button class="button" data-sound="computerbeep_34" disabled="@Jobs.IsBusy" @onclick="Nightly.RunNow">Run the automatic build now</button>
+        </div>
+    </div>
 }
 
 <JobPanel />
@@ -88,6 +113,10 @@ else
     private string? notice;
     private int days = 1;
     private string view = "list";
+    private bool autoEnabled = true;
+    private TimeOnly autoTime = new(3, 0);
+    private int autoDays = 2;
+    private string? autoNotice;
 
     private void SetView(string v)
     {
@@ -101,11 +130,43 @@ else
     protected override void OnInitialized()
     {
         Jobs.Changed += OnJobChanged;
-        try { cfg = Config.Load(); view = cfg.Ui.BuildView == "grid" ? "grid" : "list"; }
+        Nightly.Changed += OnJobChanged;
+        try { cfg = Config.Load(); view = cfg.Ui.BuildView == "grid" ? "grid" : "list"; LoadAuto(cfg.AutoBuild); }
         catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException) { cfg = null; notice = ex.Message; }
     }
 
-    public void Dispose() => Jobs.Changed -= OnJobChanged;
+    public void Dispose() { Jobs.Changed -= OnJobChanged; Nightly.Changed -= OnJobChanged; }
+
+    private void LoadAuto(AutoBuildConfig a)
+    {
+        autoEnabled = a.Enabled;
+        autoTime = a.TimeOfDay;
+        autoDays = AutoBuild.ClampDays(a.Days);
+    }
+
+    private void SaveAuto()
+    {
+        try
+        {
+            SchedulerConfig current = Config.LoadLoose();
+            current.AutoBuild = new AutoBuildConfig { Enabled = autoEnabled, Time = autoTime.ToString("HH:mm"), Days = AutoBuild.ClampDays(autoDays) };
+            Config.Save(current);
+            if (cfg is not null) cfg.AutoBuild = current.AutoBuild;
+            LoadAuto(current.AutoBuild);
+            autoNotice = autoEnabled ? "Saved. Tickle TV has to be running for the automatic build to happen." : "Saved. Automatic building is off.";
+        }
+        catch (Exception ex) { autoNotice = "Couldn't save: " + ex.Message; }
+    }
+
+    private string AutoWords()
+    {
+        var a = cfg?.AutoBuild ?? new AutoBuildConfig { Enabled = autoEnabled, Time = autoTime.ToString("HH:mm"), Days = autoDays };
+        if (!a.Enabled) return "Automatic building is off. Press Build yourself whenever you change the schedule.";
+        DateTime? next = Nightly.NextRun(a);
+        if (next is null) return "";
+        string when = next.Value <= DateTime.Now ? "as soon as nothing else is running" : next.Value.ToString("dddd 'at' h:mm tt");
+        return $"Next automatic build: {when}, writing the next {a.Days} day{(a.Days == 1 ? "" : "s")}.";
+    }
     private void OnJobChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void Preview() => Start(dryRun: true);
