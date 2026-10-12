@@ -7,14 +7,16 @@
 
 <PageTitle>Needs attention</PageTitle>
 
-<h1>Needs attention</h1>
-<p class="lead">These files were scanned, but I couldn't tell what they are or couldn't label them well. Click <strong>Watch</strong> to open a file in your video player, then <strong>Edit</strong> to say what it is. To label several similar files at once, tick their boxes and use the panel that appears. You can stop any time; nothing here is required.</p>
+<PageHead Title="Needs attention" Code="40274-02">These files were scanned, but I couldn't tell what they are or couldn't label them well. Click <strong>Watch</strong> to open a file in your video player, then <strong>Edit</strong> to say what it is. To label several similar files at once, tick their boxes and use the panel that appears. You can stop any time; nothing here is required.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 <div class="filters">
-    <button class="chip @(filter is null ? "active" : "")" @onclick="() => SetFilter(null)">All (@counts.Where(kv => kv.Key is not (AttentionReason.NoChapters or AttentionReason.HolidayGuess)).Sum(kv => kv.Value))</button>
+    <button class="chip @(filter is null ? "active" : "")" data-sound="keyok" @onclick="() => SetFilter(null)">All (@counts.Where(kv => kv.Key is not (AttentionReason.NoChapters or AttentionReason.HolidayGuess)).Sum(kv => kv.Value))</button>
     @foreach (var kv in counts.Where(kv => kv.Value > 0))
     {
-        <button class="chip @(filter == kv.Key ? "active" : "")" @onclick="() => SetFilter(kv.Key)">@LibraryActions.ReasonTitle(kv.Key) (@kv.Value)</button>
+        <button class="chip @(filter == kv.Key ? "active" : "")" data-sound="keyok" @onclick="() => SetFilter(kv.Key)">@LibraryActions.ReasonTitle(kv.Key) (@kv.Value)</button>
     }
 </div>
 
@@ -36,7 +38,17 @@
     <p class="muted">Showing the first @PageSize. Label some and press <button class="link" @onclick="Reload">refresh</button> to see more.</p>
 }
 
+</div>
+</section>
+
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Library", "library", 1),
+        new("My shows", "shows", 2),
+        new("Scan", "scan", 3),
+        new("Help", "help"),
+    ];
     private int PageSize = 50;
     private AttentionReason? filter;
     private IReadOnlyDictionary<AttentionReason, int> counts = new Dictionary<AttentionReason, int>();
