@@ -5,9 +5,11 @@
 
 <PageTitle>My shows</PageTitle>
 
-<h1>My shows</h1>
-<p class="lead">Every show Tickle TV found, with how many episodes it has and how long a typical episode runs. Episodes with chapter marks get commercial breaks between scenes; episodes without them play straight through and get commercials only at the end. The typical length is what the Schedule page uses to work out how many shows fit in a block of time.</p>
+<PageHead Title="My shows" Code="40274-04">Every show Tickle TV found, with how many episodes it has and how long a typical episode runs. Episodes with chapter marks get commercial breaks between scenes; episodes without them play straight through and get commercials only at the end. The typical length is what the Schedule page uses to work out how many shows fit in a block of time.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 @if (rows.Count == 0)
 {
     <div class="card"><p>No shows yet. Scan a folder that holds TV episodes first.</p></div>
@@ -24,8 +26,18 @@ else
         </tbody>
     </table>
 }
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Library", "library", 1),
+        new("Schedule", "schedule", 2),
+        new("Needs attention", "review", 3),
+        new("Help", "help"),
+    ];
+
     private static string HolidayWords(ShowSummary r) => r.Holidays.Count == 0 ? "" :
         string.Join(", ", r.Holidays.OrderByDescending(kv => kv.Value).Select(kv => $"{HolidayTagger.Name(kv.Key)} {kv.Value}"));
 
