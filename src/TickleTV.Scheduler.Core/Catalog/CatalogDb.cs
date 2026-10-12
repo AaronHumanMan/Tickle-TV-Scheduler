@@ -487,6 +487,31 @@ public sealed class CatalogDb : IDisposable
             ORDER BY name COLLATE NOCASE
             """, r => new Category(r.GetString(0), PrettyName(r.GetString(1)), r.GetInt32(2)));
 
+    /// <summary>
+    /// How many commercials pass a slot's category rules: in one of <paramref name="only"/> (empty means any) and in
+    /// none of <paramref name="never"/>. The slug <c>none</c> stands for commercials with no category yet.
+    /// </summary>
+    public int CountCommercials(IReadOnlyList<string> only, IReadOnlyList<string> never)
+    {
+        var args = new List<(string, object?)>();
+        string InAny(IReadOnlyList<string> slugs, string prefix)
+        {
+            var parts = new List<string>();
+            var named = slugs.Where(s => s != "none").Select((s, i) => (name: $"@{prefix}{i}", tag: "category:" + s)).ToList();
+            if (named.Count > 0)
+            {
+                foreach (var (name, tag) in named) args.Add((name, tag));
+                parts.Add($"EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ({string.Join(",", named.Select(n => n.name))}))");
+            }
+            if (slugs.Contains("none")) parts.Add("NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%')");
+            return parts.Count == 0 ? "0" : "(" + string.Join(" OR ", parts) + ")";
+        }
+        var where = new List<string> { "m.kind = 'Commercial'", "m.missing_utc IS NULL" };
+        if (only.Count > 0) where.Add(InAny(only, "o"));
+        if (never.Count > 0) where.Add("NOT " + InAny(never, "n"));
+        return (int)Scalar<long>($"SELECT COUNT(*) FROM media_items m WHERE {string.Join(" AND ", where)}", args.ToArray());
+    }
+
     /// <summary>A derived category keeps only its slug, so show it as words: "health-beauty-personal-care" becomes "Health Beauty Personal Care".</summary>
     private static string PrettyName(string nameOrSlug)
     {

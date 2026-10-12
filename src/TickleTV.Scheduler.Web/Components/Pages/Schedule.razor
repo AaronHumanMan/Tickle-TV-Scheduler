@@ -229,6 +229,25 @@ else
                                 }
                             </label>
                             @if (slot.HolidayMode != HolidayMode.Any && HolidayCountWords(slot) is { } hc) { <p class="block-note">@hc</p> }
+                            <label class="turns">Commercials:
+                                <select value="@AdMode(slot)" @onchange="e => SetAdMode(slot, e.Value?.ToString())">
+                                    <option value="any">Any category</option>
+                                    <option value="only">Only these categories</option>
+                                    <option value="never">Any except these categories</option>
+                                </select>
+                            </label>
+                            @if (AdMode(slot) != "any")
+                            {
+                                var picked = AdMode(slot) == "only" ? slot.Ads!.Only : slot.Ads!.Never;
+                                <div class="cat-list">
+                                    @foreach (var c in categories)
+                                    {
+                                        <label class="check"><input type="checkbox" checked="@picked.Contains(c.Slug)" @onchange="() => ToggleCategory(slot, picked, c.Slug)" /> @c.Name <span class="muted">(@c.Items)</span></label>
+                                    }
+                                    <label class="check"><input type="checkbox" checked="@picked.Contains(AdRules.NoCategory)" @onchange="() => ToggleCategory(slot, picked, AdRules.NoCategory)" /> No category yet <span class="muted">(@noCategory)</span></label>
+                                </div>
+                                @if (AdCountWords(slot) is { } ac) { <p class="block-note">@ac</p> }
+                            }
                             @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
                         </td>
                         <td>
@@ -273,6 +292,23 @@ else
             </label>
             <label>Commercial breaks inside each episode <span class="muted small">(needs chapter marks; the commercial time stays the same, this is how many breaks it is split into)</span> <input type="number" min="0" max="8" @bind="ch.Defaults.MaxBreaks" /></label>
             <label>Don't repeat a commercial within (minutes) <input type="number" min="0" max="1440" @bind="ch.Ads.CooldownMinutes" /></label>
+            <div class="cat-block">
+                <span class="label">Never air these categories anywhere on this channel</span>
+                @if (categories.Count == 0)
+                {
+                    <p class="muted">No categories yet. Folders like <em>90s\Cars</em> become categories when you scan, or add some on the Categories page.</p>
+                }
+                else
+                {
+                    <div class="cat-list">
+                        @foreach (var c in categories)
+                        {
+                            <label class="check"><input type="checkbox" checked="@ch.Ads.Never.Contains(c.Slug)" @onchange="() => ToggleChannelNever(ch, c.Slug)" /> @c.Name <span class="muted">(@c.Items)</span></label>
+                        }
+                        <label class="check"><input type="checkbox" checked="@ch.Ads.Never.Contains(AdRules.NoCategory)" @onchange="() => ToggleChannelNever(ch, AdRules.NoCategory)" /> No category yet <span class="muted">(@noCategory)</span></label>
+                    </div>
+                }
+            </div>
             <label>Bumpers
                 <select @bind="ch.Bumpers.Placement">
                     <option value="show_edges">One before the show and one after it</option>
@@ -314,7 +350,63 @@ else
             shows = summaries.Select(s => s.Show).ToList();
             lengths = summaries.ToDictionary(s => s.Show, s => s.AvgDurationMs, StringComparer.OrdinalIgnoreCase);
             holidayCounts = summaries.ToDictionary(s => s.Show, s => s.Holidays, StringComparer.OrdinalIgnoreCase);
+            categories = Catalog.Run(db => db.ListCategories());
+            noCategory = Catalog.Run(db => db.CountCommercials([AdRules.NoCategory], []));
         }
+    }
+
+    // ----- Commercial categories per slot
+
+    private IReadOnlyList<CatalogDb.Category> categories = [];
+    private int noCategory;
+    private readonly Dictionary<SlotConfig, string> adModes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<SlotConfig, int> adCounts = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>any, only or never: what the person chose for this slot, or what its saved rule implies.</summary>
+    private string AdMode(SlotConfig slot)
+    {
+        if (adModes.TryGetValue(slot, out string? mode)) return mode;
+        if (slot.Ads is null || slot.Ads.IsEmpty) return "any";
+        return slot.Ads.Only.Count > 0 ? "only" : "never";
+    }
+
+    private void SetAdMode(SlotConfig slot, string? mode)
+    {
+        mode = mode is "only" or "never" ? mode : "any";
+        adModes[slot] = mode;
+        if (mode == "any") { slot.Ads = null; adCounts.Remove(slot); return; }
+        slot.Ads ??= new SlotAdsConfig();
+        if (mode == "only") slot.Ads.Never.Clear(); else slot.Ads.Only.Clear();
+        RecountAds(slot);
+    }
+
+    private void ToggleCategory(SlotConfig slot, List<string> picked, string slug)
+    {
+        if (!picked.Remove(slug)) picked.Add(slug);
+        RecountAds(slot);
+    }
+
+    private static void ToggleChannelNever(ChannelConfig ch, string slug)
+    {
+        if (!ch.Ads.Never.Remove(slug)) ch.Ads.Never.Add(slug);
+    }
+
+    private void RecountAds(SlotConfig slot)
+    {
+        if (slot.Ads is null || !Catalog.CatalogExists) { adCounts.Remove(slot); return; }
+        adCounts[slot] = Catalog.Run(db => db.CountCommercials(slot.Ads.Only, slot.Ads.Never));
+    }
+
+    private string? AdCountWords(SlotConfig slot)
+    {
+        if (slot.Ads is null) return null;
+        bool only = AdMode(slot) == "only";
+        var picked = only ? slot.Ads.Only : slot.Ads.Never;
+        if (picked.Count == 0) return only ? "Tick at least one category, or this slot will use any commercial." : "Tick the categories to keep out of this slot.";
+        if (!adCounts.TryGetValue(slot, out int n)) RecountAds(slot);
+        n = adCounts.TryGetValue(slot, out int m) ? m : 0;
+        if (only && n < AdRules.SmallPool) return $"Only {n} commercial{(n == 1 ? "" : "s")} match. {(n == 0 ? "The breaks will use any commercial instead." : "They will repeat a lot, and breaks fall back to any commercial when they run out.")}";
+        return $"{n:N0} commercials can air in this slot.";
     }
 
     private long? AverageOf(string show) => lengths.TryGetValue(show, out long ms) ? ms : null;
@@ -399,6 +491,8 @@ else
                 if (s.Shows.Count(n => !string.IsNullOrWhiteSpace(n)) != s.Shows.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase).Count())
                     problems.Add($"Channel {ch.Number}: the {s.Time} slot lists the same show twice.");
                 if (!TimeOnly.TryParse(s.Time, out _)) problems.Add($"Channel {ch.Number}: \"{s.Time}\" isn't a valid time.");
+                if (AdMode(s) != "any" && (s.Ads is null || s.Ads.IsEmpty))
+                    problems.Add($"Channel {ch.Number}: the {s.Time} slot says \"{(AdMode(s) == "only" ? "only these categories" : "any except these categories")}\" but no category is ticked. Tick one, or choose Any category.");
             }
             foreach (string t in plan.Slots.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key))
                 problems.Add($"{where}: two slots start at {t}. Give them different times.");

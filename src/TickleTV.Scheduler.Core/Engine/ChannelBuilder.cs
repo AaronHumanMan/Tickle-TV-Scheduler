@@ -77,6 +77,9 @@ public sealed class ChannelBuilder
             .Concat(_db.ListItems(MediaKind.Unknown))
             .Select(i => _db.GetEntry(i.Id)!)
             .ToList();
+        // The channel's never-list applies everywhere; each slot narrows further, see SlotLibrary.
+        List<CatalogEntry> channelLibrary = adLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, null)).ToList();
+        var slotLibraries = new Dictionary<SlotConfig, (List<CatalogEntry> Strict, List<CatalogEntry> Loose)>();
         BumperSet bumperSet = LoadBumpers();
         List<CatalogEntry> gapLibrary = _channel.Gap.HoldGrid
             ? PoolQuery.Parse(_channel.Gap.Pool).Filter(_db.ListItems(MediaKind.Commercial).Concat(_db.ListItems(MediaKind.Bumper)).Select(i => _db.GetEntry(i.Id)!)).ToList()
@@ -119,7 +122,8 @@ public sealed class ChannelBuilder
             string? show = ChooseShow(slot, untilNextMs);
             if (show is null)
             {
-                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapLibrary, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Label);
+                var gapClips = gapLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads)).ToList();
+                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapClips, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Label);
                 continue;
             }
 
@@ -144,13 +148,21 @@ public sealed class ChannelBuilder
                 continue;
             }
 
-            // Ad candidates: in the pool, era-matched if the pool asks, and outside the cooldown window.
+            // Ad candidates: allowed by the slot's category rules, in the pool, era-matched if the pool asks, and outside the cooldown window.
             var ctx = new QueryContext(episode.Episode?.AirDate?.Year ?? episode.Item.Year);
-            List<FillerClip> ads = pool.Filter(adLibrary, ctx)
-                .Where(e => !OnCooldown(e.Item.Id, cursor, cooldown, recentPlays))
-                .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
-                .ToList();
-            if (ads.Count < 4 && adLibrary.Count > 0)
+            (List<CatalogEntry> strictLibrary, List<CatalogEntry> looseLibrary) = SlotLibrary(slot, channelLibrary, slotLibraries, warnings);
+            List<FillerClip> ads = Candidates(pool, strictLibrary, ctx, cursor, cooldown, recentPlays);
+            if (ads.Count < AdRules.FallbackBelow && !ReferenceEquals(strictLibrary, looseLibrary))
+            {
+                // The slot's categories have run short: let any commercial in (the never-lists still hold) so the show still ends on time.
+                List<FillerClip> fallback = Candidates(pool, looseLibrary, ctx, cursor, cooldown, recentPlays);
+                if (fallback.Count > ads.Count)
+                {
+                    warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} commercials from the slot's categories were free, so any commercial may air in its breaks.");
+                    ads = fallback;
+                }
+            }
+            if (ads.Count < AdRules.FallbackBelow && adLibrary.Count > 0)
                 warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} ads available after pool filter and cooldown.");
 
             var probe = new MediaProbe
@@ -328,6 +340,30 @@ public sealed class ChannelBuilder
         if (match.Value is null || match.Value.Count == 0) return null;
         return _db.FindById(match.Value.Peek())?.DurationMs;
     }
+
+    /// <summary>The commercials a slot may use: strict (its only-list and never-lists) and loose (never-lists only, for the fallback). Warns once when the strict set is small.</summary>
+    private (List<CatalogEntry> Strict, List<CatalogEntry> Loose) SlotLibrary(
+        SlotConfig slot, List<CatalogEntry> channelLibrary, Dictionary<SlotConfig, (List<CatalogEntry>, List<CatalogEntry>)> cache, List<string> warnings)
+    {
+        if (cache.TryGetValue(slot, out var cached)) return cached;
+        if (slot.Ads is null || slot.Ads.IsEmpty)
+        {
+            cache[slot] = (channelLibrary, channelLibrary);
+            return cache[slot];
+        }
+        List<CatalogEntry> strict = channelLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads)).ToList();
+        List<CatalogEntry> loose = slot.Ads.Only.Count == 0 ? strict : channelLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads, strict: false)).ToList();
+        if (slot.Ads.Only.Count > 0 && strict.Count < AdRules.SmallPool)
+            warnings.Add($"{slot.Time} slot ({slot.Label}): only {strict.Count} commercials match its categories ({AdRules.Describe(slot.Ads)}). They will repeat a lot, and breaks fall back to any commercial when they run out.");
+        cache[slot] = (strict, loose);
+        return cache[slot];
+    }
+
+    private List<FillerClip> Candidates(PoolQuery pool, List<CatalogEntry> library, QueryContext ctx, DateTimeOffset cursor, TimeSpan cooldown, Dictionary<long, DateTimeOffset> recentPlays) =>
+        pool.Filter(library, ctx)
+            .Where(e => !OnCooldown(e.Item.Id, cursor, cooldown, recentPlays))
+            .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
+            .ToList();
 
     private DateTimeOffset EmitStationBreak(
         List<PlayoutItem> items, List<GuideProgramme> programmes, List<PlayRecord> plays, List<string> warnings,

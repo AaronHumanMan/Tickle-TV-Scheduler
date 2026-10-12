@@ -81,6 +81,7 @@ public sealed class SchedulerConfig
             if (ch.DefaultPlan is not null && ch.FindPlan(ch.DefaultPlan) is null)
                 throw new InvalidDataException($"Channel {ch.Number}: the default day plan '{ch.DefaultPlan}' does not exist.");
             foreach (CalendarRule rule in ch.Calendar) rule.Validate(ch);
+            ch.Ads.Normalize();
             foreach (SlotConfig slot in ch.Plans.SelectMany(p => p.Slots))
             {
                 slot.Normalize();
@@ -396,6 +397,10 @@ public sealed class AdsConfig
     /// <summary>Do not air the same clip again within this many minutes.</summary>
     public int CooldownMinutes { get; set; } = 90;
     public int MaxRepeatsPerBreak { get; set; } = 1;
+    /// <summary>Category slugs that never air anywhere on this channel.</summary>
+    public List<string> Never { get; set; } = [];
+
+    public void Normalize() => Never = AdRules.CleanSlugs(Never);
 }
 
 public sealed class SlotConfig
@@ -414,6 +419,8 @@ public sealed class SlotConfig
     public string? Holiday { get; set; }
     /// <summary>any (default), first (each holiday episode once, then regular ones) or only (holiday episodes, wrapping).</summary>
     public string? HolidayEpisodes { get; set; }
+    /// <summary>Which commercial categories may air in this slot. Null means any.</summary>
+    public SlotAdsConfig? Ads { get; set; }
     public string? Pad { get; set; }
     public int? MaxBreaks { get; set; }
     public int? MinActSeconds { get; set; }
@@ -443,6 +450,9 @@ public sealed class SlotConfig
             if (Holidays.Find(Holiday) is null) throw new InvalidDataException($"Unknown holiday '{Holiday}'. Known: {string.Join(", ", Holidays.All.Select(h => h.Key))}.");
             HolidayEpisodes = HolidayMode == HolidayMode.Only ? "only" : "first";
         }
+        // Category rules: tidy the slugs, and keep an empty rule out of the file.
+        Ads?.Normalize();
+        if (Ads is { IsEmpty: true }) Ads = null;
     }
 
     [YamlIgnore]
