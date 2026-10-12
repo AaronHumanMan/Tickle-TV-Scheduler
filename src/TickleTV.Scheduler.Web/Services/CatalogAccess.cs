@@ -5,7 +5,8 @@ namespace TickleTV.Scheduler.Web.Services;
 
 /// <summary>
 /// Opens the catalog for one unit of work at a time. The catalog object is not thread-safe, so every page
-/// call goes through <see cref="Run"/>, which opens a fresh connection and serialises writers.
+/// call goes through <see cref="Run"/>, which opens a fresh connection and serialises writers. Long jobs (a scan,
+/// a build) must not run inside it: they open their own connection, so pages keep loading while they work.
 /// </summary>
 public sealed class CatalogAccess
 {

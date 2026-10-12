@@ -16,7 +16,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>Tickle TV Scheduler</Product>
     <AssemblyTitle>Tickle TV Scheduler</AssemblyTitle>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

@@ -70,8 +70,11 @@ public sealed class JobRunner
                         job.Current = Path.GetFileName(p.CurrentFile);
                         if (p.Done % 25 == 0 || p.Done == p.Total) Notify();
                     });
-                    ScanReport report = await Task.Run(() => _catalog.Run(db =>
-                        new Scanner(db, new Ffprobe(), line => AddLog(job, line)).ScanAsync(roots, CancellationToken.None, progress).GetAwaiter().GetResult()));
+                    // The scan gets its own connection and stays out of the pages' gate: the catalog is in WAL mode, so
+                    // pages keep reading while it writes, and the app stays usable for the hours a big library takes.
+                    ScanReport report;
+                    using (var db = new CatalogDb(_catalog.CatalogPath))
+                        report = await new Scanner(db, new Ffprobe(), line => AddLog(job, line)).ScanAsync(roots, CancellationToken.None, progress);
                     job.Result = report;
                     bool anySidecar = report.WithSidecar > 0 || _catalog.Run(db => db.CountWithSidecar()) > 0;
                     job.Summary = $"Added {report.Added}, updated {report.Updated}, moved {report.Moved}, unchanged {report.Unchanged}, missing {report.Missing}."
