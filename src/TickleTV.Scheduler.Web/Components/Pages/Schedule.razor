@@ -9,9 +9,11 @@
 
 <PageTitle>Schedule</PageTitle>
 
-<h1>My daily schedule</h1>
-<p class="lead">This is the grid your channels follow each day. Each time slot plays episodes back to back until the next slot starts. A slot can hold one show, or several that take turns (a block). A channel can have more than one grid, called a <strong>day plan</strong> (Normal Day, Weekend, Christmas); the <a href="calendar">Calendar</a> page says which dates use which. Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</p>
+<PageHead Title="My daily schedule" Code="40274-07">This is the grid your channels follow each day. Each time slot plays episodes back to back until the next slot starts. A slot can hold one show, or several that take turns (a block). A channel can have more than one grid, called a <strong>day plan</strong> (Normal Day, Weekend, Christmas); the <a href="calendar">Calendar</a> page says which dates use which. Change anything, press <strong>Save</strong>, then go to <a href="build">Build</a> to put it on air.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 @if (cfg is null)
 {
     <div class="card warn"><p>@notice</p></div>
@@ -20,8 +22,8 @@ else
 {
     <div class="view-toggle">
         <span class="muted">Show as</span>
-        <button class="chip @(view == "grid" ? "active" : "")" @onclick="@(() => SetView("grid"))">Guide grid</button>
-        <button class="chip @(view == "list" ? "active" : "")" @onclick="@(() => SetView("list"))">Lists</button>
+        <button class="chip @(view == "grid" ? "active" : "")" data-sound="keyok" @onclick="@(() => SetView("grid"))">Guide grid</button>
+        <button class="chip @(view == "list" ? "active" : "")" data-sound="keyok" @onclick="@(() => SetView("list"))">Lists</button>
     </div>
 
     @if (view == "grid")
@@ -46,9 +48,9 @@ else
     }
 
     <div class="actions save-row">
-        <button class="button primary" @onclick="Save">Save schedule</button>
-        <a class="button secondary" href="build">Go to Build</a>
-        <a class="button secondary" href="channels">Add a channel</a>
+        <button class="button primary" data-sound="keyok" @onclick="Save">Save schedule</button>
+        <a class="button secondary" href="build" data-sound="keyok">Go to Build</a>
+        <a class="button secondary" href="channels" data-sound="keyok">Add a channel</a>
     </div>
     @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
     @if (problems.Count > 0)
@@ -56,8 +58,17 @@ else
         <div class="card warn"><ul>@foreach (string p in problems) { <li>@p</li> }</ul></div>
     }
 }
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Calendar", "calendar", 1),
+        new("Build", "build", 2),
+        new("Channels", "channels", 3),
+        new("Help", "help"),
+    ];
     private SchedulerConfig? cfg;
     private IReadOnlyList<string> shows = [];
     private Dictionary<string, long> lengths = new(StringComparer.OrdinalIgnoreCase);
@@ -144,8 +155,8 @@ else
             </label>
             <label class="inline">Name <input value="@plan.Name" @onchange="e => Rename(ch, plan, e.Value?.ToString())" /></label>
             <label class="inline">New plan called <input placeholder="Weekend" value="@NewName(ch)" @onchange="e => newNames[ch.Number] = e.Value?.ToString() ?? string.Empty" /></label>
-            <button class="button" @onclick="() => CopyPlan(ch, plan)">Make a copy of this plan</button>
-            <button class="button secondary" @onclick="() => BlankPlan(ch)">Start a blank plan</button>
+            <button class="button" data-sound="keyok" @onclick="() => CopyPlan(ch, plan)">Make a copy of this plan</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => BlankPlan(ch)">Start a blank plan</button>
             @if (!ReferenceEquals(plan, ch.Default)) { <button class="link" @onclick="() => ch.DefaultPlan = plan.Name">use this on ordinary days</button> }
             @if (ch.Plans.Count > 1) { <button class="link" @onclick="() => DeletePlan(ch, plan)">delete this plan</button> }
         </div>
@@ -228,7 +239,7 @@ else
             </div>
         }
         <div class="actions">
-            <button class="button" @onclick="() => AddSlot(plan)">Add a time slot</button>
+            <button class="button" data-sound="keyok" @onclick="() => AddSlot(plan)">Add a time slot</button>
         </div>
 
         <h3>Channel settings</h3>
