@@ -229,6 +229,7 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 /* Day plans and the calendar */
 .plan-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 6px 0 8px; }
 .plan-bar label.inline { display: inline-flex; align-items: center; gap: 6px; }
+.plan-form { background: var(--field); border-left: 10px solid var(--sky); padding: 10px 14px; }
 .table.grid td.g-ch .g-plan { color: var(--gold); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .cal-nav { margin-bottom: 10px; }
 .cal-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0 12px; }

@@ -88,41 +88,49 @@ else
 
     private string NewName(ChannelConfig ch) => newNames.TryGetValue(ch.Number, out string? n) ? n : string.Empty;
 
-    private void Rename(ChannelConfig ch, DayPlan plan, string? name)
+    private readonly Dictionary<string, string> pending = new();
+
+    private string? Pending(ChannelConfig ch) => pending.TryGetValue(ch.Number, out string? a) ? a : null;
+
+    private void Begin(ChannelConfig ch, string action)
     {
-        name = name?.Trim();
-        if (string.IsNullOrEmpty(name) || string.Equals(name, plan.Name, StringComparison.Ordinal)) return;
-        if (ch.FindPlan(name) is not null) { notice = $"There is already a day plan called \"{name}\"."; return; }
-        ch.RenamePlan(plan, name);
-        selectedPlan[ch.Number] = plan.Name;
+        pending[ch.Number] = action;
+        newNames[ch.Number] = action == "rename" ? Selected(ch).Name : string.Empty;
+        notice = null;
     }
 
-    private string? TakeNewName(ChannelConfig ch)
+    /// <summary>Carries out the pending rename, copy or blank plan with the name typed in the small form.</summary>
+    private void Finish(ChannelConfig ch, DayPlan plan)
     {
+        string? action = Pending(ch);
+        if (action is null) return;
         string name = NewName(ch).Trim();
-        if (name.Length == 0) { notice = "Type a name for the new plan first, such as Weekend or Christmas."; return null; }
-        if (ch.FindPlan(name) is not null) { notice = $"There is already a day plan called \"{name}\". Pick another name."; return null; }
+        if (name.Length == 0) { notice = "Type a name first, such as Weekend or Christmas."; return; }
+        DayPlan? clash = ch.FindPlan(name);
+        if (clash is not null && !(action == "rename" && ReferenceEquals(clash, plan))) { notice = $"There is already a day plan called \"{name}\". Pick another name."; return; }
+
+        switch (action)
+        {
+            case "rename":
+                ch.RenamePlan(plan, name);
+                selectedPlan[ch.Number] = plan.Name;
+                notice = $"Renamed to \"{name}\". Press Save schedule to keep it.";
+                break;
+            case "copy":
+                DayPlan copy = plan.Copy(name);
+                foreach (var s in copy.Slots) if (s.Shows.Count == 0) s.Shows.Add(string.Empty);
+                ch.Plans.Add(copy);
+                selectedPlan[ch.Number] = name;
+                notice = $"\"{name}\" is a copy of \"{plan.Name}\". Change its slots, press Save schedule, then tell the Calendar page when to use it.";
+                break;
+            default:
+                ch.Plans.Add(new DayPlan { Name = name, Slots = [new SlotConfig { Time = "06:00", Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" }] });
+                selectedPlan[ch.Number] = name;
+                notice = $"\"{name}\" starts with one slot. Add more, press Save schedule, then tell the Calendar page when to use it.";
+                break;
+        }
+        pending.Remove(ch.Number);
         newNames[ch.Number] = string.Empty;
-        return name;
-    }
-
-    private void CopyPlan(ChannelConfig ch, DayPlan plan)
-    {
-        if (TakeNewName(ch) is not { } name) return;
-        DayPlan copy = plan.Copy(name);
-        foreach (var s in copy.Slots) if (s.Shows.Count == 0) s.Shows.Add(string.Empty);
-        ch.Plans.Add(copy);
-        selectedPlan[ch.Number] = name;
-        notice = $"\"{name}\" is a copy of \"{plan.Name}\". Change its slots, press Save, then tell the Calendar page when to use it.";
-    }
-
-    private void BlankPlan(ChannelConfig ch)
-    {
-        if (TakeNewName(ch) is not { } name) return;
-        var plan = new DayPlan { Name = name, Slots = [new SlotConfig { Time = "06:00", Shows = [shows.FirstOrDefault() ?? ""], Order = "chronological" }] };
-        ch.Plans.Add(plan);
-        selectedPlan[ch.Number] = name;
-        notice = $"\"{name}\" starts with one slot. Add more, press Save, then tell the Calendar page when to use it.";
     }
 
     private void DeletePlan(ChannelConfig ch, DayPlan plan)
@@ -153,13 +161,22 @@ else
                     @foreach (var p in ch.Plans) { <option value="@p.Name">@p.Name@(ReferenceEquals(p, ch.Default) ? " (ordinary days)" : "")</option> }
                 </select>
             </label>
-            <label class="inline">Name <input value="@plan.Name" @onchange="e => Rename(ch, plan, e.Value?.ToString())" /></label>
-            <label class="inline">New plan called <input placeholder="Weekend" value="@NewName(ch)" @onchange="e => newNames[ch.Number] = e.Value?.ToString() ?? string.Empty" /></label>
-            <button class="button" data-sound="keyok" @onclick="() => CopyPlan(ch, plan)">Make a copy of this plan</button>
-            <button class="button secondary" data-sound="keyok" @onclick="() => BlankPlan(ch)">Start a blank plan</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => Begin(ch, \"rename\")">Rename this plan</button>
+            <button class="button" data-sound="keyok" @onclick="() => Begin(ch, \"copy\")">Make a copy of this plan</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => Begin(ch, \"blank\")">Start a blank plan</button>
             @if (!ReferenceEquals(plan, ch.Default)) { <button class="link" @onclick="() => ch.DefaultPlan = plan.Name">use this on ordinary days</button> }
             @if (ch.Plans.Count > 1) { <button class="link" @onclick="() => DeletePlan(ch, plan)">delete this plan</button> }
         </div>
+        @if (Pending(ch) is { } action)
+        {
+            <div class="plan-bar plan-form">
+                <label class="inline">@(action == "rename" ? "New name for this plan" : action == "copy" ? $"Call the copy of \"{plan.Name}\"" : "Call the new plan")
+                    <input value="@NewName(ch)" @oninput="e => newNames[ch.Number] = e.Value?.ToString() ?? string.Empty" @onkeydown="e => { if (e.Key == \"Enter\") Finish(ch, plan); }" placeholder="Weekend" />
+                </label>
+                <button class="button primary" data-sound="keyok" @onclick="() => Finish(ch, plan)">@(action == "rename" ? "Rename" : action == "copy" ? "Create the copy" : "Create the plan")</button>
+                <button class="link" @onclick="() => pending.Remove(ch.Number)">cancel</button>
+            </div>
+        }
         <p class="muted">@UsedWords(ch, plan) <a href="calendar">Change on the Calendar page.</a></p>
 
         <h3>Time slots</h3>
