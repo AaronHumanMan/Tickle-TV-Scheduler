@@ -82,7 +82,7 @@ ul, ol { padding-left: 1.3em; }
 
 /* ---------- tiles: data blocks ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin: 14px 0; }
-.tile { background: var(--violet); color: var(--black); border-radius: 0 22px 22px 0; padding: 14px 16px 10px; text-align: right; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; }
+.tile { background: var(--violet); color: var(--black); border-radius: 999px; padding: 14px 28px 10px; text-align: right; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; }
 .tile:nth-child(2) { background: var(--lavender); }
 .tile:nth-child(3) { background: var(--peach); }
 .tile .big { font-size: 2.4rem; line-height: 1; }
