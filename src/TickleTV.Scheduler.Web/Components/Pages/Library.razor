@@ -7,9 +7,11 @@
 
 <PageTitle>Library</PageTitle>
 
-<h1>Library</h1>
-<p class="lead">Everything Tickle TV has scanned. Search by name, narrow by kind, show, or category, then watch, open, or edit any file. Tick several to label them together.</p>
+<PageHead Title="Library" Code="40274-03">Everything Tickle TV has scanned. Search by name, narrow by kind, show, or category, then watch, open, or edit any file. Tick several to label them together.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 <div class="card search-card">
     <div class="form">
         <label>Search by name
@@ -34,8 +36,8 @@
             <SearchSelect Options="tags" Value="@tag" ValueChanged="@(v => tag = v)" Placeholder="Any label" AddLabel="Any label" />
         </label>
         <div class="actions">
-            <button class="button primary" @onclick="Search">Search</button>
-            <button class="button secondary" @onclick="Clear">Clear</button>
+            <button class="button primary" data-sound="keyok" @onclick="Search">Search</button>
+            <button class="button secondary" data-sound="keyok" @onclick="Clear">Clear</button>
         </div>
     </div>
 </div>
@@ -50,13 +52,23 @@
 @if (total > PageSize)
 {
     <div class="pager">
-        <button class="button secondary" disabled="@(page == 0)" @onclick="() => Go(page - 1)">Previous</button>
+        <button class="button secondary" data-sound="keyok" disabled="@(page == 0)" @onclick="() => Go(page - 1)">Previous</button>
         <span class="muted">Page @(page + 1) of @Math.Max(1, (total + PageSize - 1) / PageSize)</span>
-        <button class="button secondary" disabled="@((page + 1) * PageSize >= total)" @onclick="() => Go(page + 1)">Next</button>
+        <button class="button secondary" data-sound="keyok" disabled="@((page + 1) * PageSize >= total)" @onclick="() => Go(page + 1)">Next</button>
     </div>
 }
 
+</div>
+</section>
+
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Needs attention", "review", 1),
+        new("My shows", "shows", 2),
+        new("Categories", "categories", 3),
+        new("Help", "help"),
+    ];
     private int PageSize = 50;
     private string text = "";
     private string kind = "";
