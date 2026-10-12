@@ -1,0 +1,107 @@
+@page "/settings"
+@using TickleTV.Scheduler.Core.Config
+@using TickleTV.Scheduler.Core.Media
+@using TickleTV.Scheduler.Web.Services
+@inject ConfigStore Config
+@inject CatalogAccess Catalog
+@rendermode InteractiveServer
+
+<PageTitle>Settings</PageTitle>
+
+<PageHead Title="Settings" Code="40274-11">Where Tickle TV finds ErsatzTV, and where it keeps its own things. Most people only need this page once, to point Tickle TV at ErsatzTV's lineup file.</PageHead>
+
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
+<div class="card @(lineupFound ? "ok" : "warn")">
+    <h2>Where is ErsatzTV?</h2>
+    <p>Tickle TV hands finished schedules to ErsatzTV through ErsatzTV's <strong>lineup.json</strong> file, which lives in ErsatzTV's config folder. ErsatzTV creates that file the first time it runs, so start ErsatzTV once before you look for it.</p>
+    <div class="inline-form">
+        <input @bind="lineupPath" placeholder="e.g. C:\ErsatzTV Next\config\lineup.json" @onkeydown="OnKey" />
+        <button class="button primary" data-sound="keyok" @onclick="SaveLineup">Save</button>
+    </div>
+    @if (lineupFound)
+    {
+        <p class="summary">Found it. ErsatzTV has @channelCount channel@(channelCount == 1 ? "" : "s") there. <a href="channels">Go to Channels</a>.</p>
+    }
+    else
+    {
+        <p class="why">I can't find a file at that path.</p>
+        <ul>
+            <li>Open ErsatzTV's folder in File Explorer, open its <em>config</em> folder, and look for <em>lineup.json</em>.</li>
+            <li>Click the address bar at the top, copy what's there, paste it here, and add <em>\lineup.json</em> on the end.</li>
+            @if (guesses.Count > 0) { <li>Places I checked: @string.Join("; ", guesses)</li> }
+        </ul>
+    }
+    @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
+</div>
+
+<div class="card">
+    <h2>Where Tickle TV keeps its things</h2>
+    <table class="table compact">
+        <tbody>
+        <tr><td>Settings file</td><td><code>@Config.Path</code></td></tr>
+        <tr><td>Catalog (everything scanned, plus your labels)</td><td><code>@Catalog.CatalogPath</code></td></tr>
+        <tr><td>Notes from each automatic build</td><td><code>@NightlyBuilder.LogPath</code></td></tr>
+        <tr><td>Video reader (ffprobe)</td><td>@if (ffprobe is null) { <span class="why">Not found. The <a href="scan">Scan</a> page explains where to get it.</span> } else { <code>@ffprobe</code> }</td></tr>
+        </tbody>
+    </table>
+    <p class="muted">Uninstalling Tickle TV leaves these alone, so your labels survive a reinstall. To start completely fresh, delete the folder that holds the settings file.</p>
+</div>
+</div>
+</section>
+
+@code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Channels", "channels", 1),
+        new("Scan", "scan", 2),
+        new("Build", "build", 3),
+        new("Help", "help"),
+    ];
+    private string lineupPath = "";
+    private bool lineupFound;
+    private int channelCount;
+    private List<string> guesses = [];
+    private string? ffprobe;
+    private string? notice;
+
+    protected override void OnInitialized()
+    {
+        SchedulerConfig cfg = Config.LoadLoose();
+        lineupPath = cfg.ResolvePath(cfg.Next.Lineup);
+        guesses = ConfigStore.LineupGuesses.ToList();
+        ffprobe = Ffprobe.Locate();
+        Check();
+    }
+
+    private void Check()
+    {
+        lineupFound = File.Exists(lineupPath);
+        channelCount = 0;
+        if (!lineupFound) return;
+        try { channelCount = NextLineup.Load(lineupPath).Count; }
+        catch (Exception ex) { lineupFound = false; notice = "That file exists but I couldn't read it as ErsatzTV's lineup: " + ex.Message; }
+    }
+
+    private void SaveLineup()
+    {
+        string path = lineupPath.Trim().Trim('"');
+        if (path.Length == 0) { notice = "Type the path first."; return; }
+        if (Directory.Exists(path)) path = Path.Combine(path, "lineup.json");
+        lineupPath = path;
+        try
+        {
+            SchedulerConfig cfg = Config.LoadLoose();
+            cfg.Next.Lineup = path;
+            Config.Save(cfg);
+            notice = null;
+            Check();
+            if (lineupFound) notice = "Saved. Tickle TV will hand schedules to this ErsatzTV.";
+            else notice = "Saved, but there is no file there yet. Start ErsatzTV once so it creates lineup.json, then come back.";
+        }
+        catch (Exception ex) { notice = "Couldn't save: " + ex.Message; }
+    }
+
+    private void OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") SaveLineup(); }
+}

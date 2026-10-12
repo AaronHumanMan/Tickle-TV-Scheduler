@@ -55,13 +55,12 @@ public sealed class ConfigStore
         Channels = [],
     };
 
-    private static string? FindLineup()
-    {
-        string[] candidates =
-        [
+    /// <summary>Where ErsatzTV's lineup file usually is; the Settings page lists these when it cannot find one.</summary>
+    public static IReadOnlyList<string> LineupGuesses =>
+    [
             System.IO.Path.Combine("C:\\ErsatzTV Next", "config", "lineup.json"),
             System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ersatztv", "config", "lineup.json"),
-        ];
-        return candidates.FirstOrDefault(File.Exists);
-    }
+    ];
+
+    private static string? FindLineup() => LineupGuesses.FirstOrDefault(File.Exists);
 }

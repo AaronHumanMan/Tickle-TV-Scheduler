@@ -6,6 +6,8 @@ Next streams the channels. This tool decides what airs, when, and with which bre
 
 Status: Phase 1 in progress. A catalog, a YAML channel config with a daily grid, episode order modes, ad pools with cooldown, and a `build` command that writes rolling windows all work against a real Next. See the planning doc in this repo for the full design.
 
+Licensed under the MIT License; see `LICENSE`.
+
 ## Requirements
 
 - .NET 10 SDK
