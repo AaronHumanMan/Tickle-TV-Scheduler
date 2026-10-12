@@ -44,7 +44,7 @@ else
                     <tbody>
                     @foreach (var s in TodayPlan(ch).Slots.OrderBy(s => s.StartTime))
                     {
-                        <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Label@(s.ShowList.Count > 1 ? " (take turns)" : "")</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
+                        <tr><td>@s.StartTime.ToString("h:mm tt")</td><td>@s.Label@(s.ShowList.Count > 1 ? " (take turns)" : "")@(s.HolidayWords is { } hw ? $" ({hw})" : "")</td><td>@(s.OrderMode == OrderMode.Shuffle ? "shuffled, no repeats" : "in order")</td><td>@PadWords(s.Pad ?? ch.Defaults.Pad)</td></tr>
                     }
                     </tbody>
                 </table>

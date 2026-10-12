@@ -205,7 +205,7 @@ public sealed class DayPlan
         Name = name,
         Slots = Slots.Select(s => new SlotConfig
         {
-            Time = s.Time, Shows = [.. s.ShowList], Turns = s.Turns, Order = s.Order, Pad = s.Pad,
+            Time = s.Time, Shows = [.. s.ShowList], Turns = s.Turns, Order = s.Order, Pad = s.Pad, Holiday = s.Holiday, HolidayEpisodes = s.HolidayEpisodes,
             MaxBreaks = s.MaxBreaks, MinActSeconds = s.MinActSeconds, PreRoll = s.PreRoll, PostRoll = s.PostRoll,
         }).ToList(),
     };
@@ -408,6 +408,10 @@ public sealed class SlotConfig
     public string? Turns { get; set; }
     /// <summary>chronological or shuffle; applies to every show in the block.</summary>
     public string Order { get; set; } = "chronological";
+    /// <summary>A holiday key (christmas, halloween, ...) when the slot favours holiday episodes. Null means any episode.</summary>
+    public string? Holiday { get; set; }
+    /// <summary>any (default), first (each holiday episode once, then regular ones) or only (holiday episodes, wrapping).</summary>
+    public string? HolidayEpisodes { get; set; }
     public string? Pad { get; set; }
     public int? MaxBreaks { get; set; }
     public int? MinActSeconds { get; set; }
@@ -429,12 +433,34 @@ public sealed class SlotConfig
         Show = null;
         // Only a block with random turns needs the line in the file.
         Turns = RandomTurns && Shows.Count > 1 ? "random" : null;
+        // Likewise a holiday choice: "any" is the default and stays out of the file.
+        if (HolidayMode == HolidayMode.Any || string.IsNullOrWhiteSpace(Holiday)) { Holiday = null; HolidayEpisodes = null; }
+        else
+        {
+            Holiday = Holiday.Trim().ToLowerInvariant();
+            if (Holidays.Find(Holiday) is null) throw new InvalidDataException($"Unknown holiday '{Holiday}'. Known: {string.Join(", ", Holidays.All.Select(h => h.Key))}.");
+            HolidayEpisodes = HolidayMode == HolidayMode.Only ? "only" : "first";
+        }
     }
 
     [YamlIgnore]
     public TimeOnly StartTime => TimeOnly.TryParseExact(Time.Trim(), ["H:mm", "HH:mm", "H:mm:ss"], out TimeOnly t)
         ? t
         : throw new InvalidDataException($"Bad slot time '{Time}'. Use HH:mm.");
+
+    [YamlIgnore]
+    public HolidayMode HolidayMode => (HolidayEpisodes ?? "").Trim().ToLowerInvariant() switch
+    {
+        "" or "any" => HolidayMode.Any,
+        "first" or "prefer" => HolidayMode.First,
+        "only" => HolidayMode.Only,
+        _ => throw new InvalidDataException($"Unknown holiday_episodes '{HolidayEpisodes}'. Use any, first or only."),
+    };
+
+    /// <summary>"Christmas Day episodes first" or null when the slot takes any episode.</summary>
+    [YamlIgnore]
+    public string? HolidayWords => HolidayMode == HolidayMode.Any || Holiday is null ? null
+        : $"{Holidays.Find(Holiday)?.Name ?? Holiday} episodes {(HolidayMode == HolidayMode.Only ? "only" : "first")}";
 
     [YamlIgnore]
     public bool RandomTurns => (Turns ?? "").Trim().ToLowerInvariant() switch
@@ -466,6 +492,16 @@ public sealed class SlotConfig
     {
         Mode = Pad is null ? d.PaddingMode : SlotDefaults.ParsePad(Pad),
     };
+}
+
+/// <summary>How a slot treats holiday episodes of its shows.</summary>
+public enum HolidayMode
+{
+    Any,
+    /// <summary>Each holiday episode once (in the slot's order), then the regular rotation. Starts afresh each year.</summary>
+    First,
+    /// <summary>Holiday episodes and nothing else, wrapping round.</summary>
+    Only,
 }
 
 public enum OrderMode

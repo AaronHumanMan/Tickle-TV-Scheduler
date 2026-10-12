@@ -20,10 +20,52 @@ public sealed class EpisodePicker
         _random = seed is null ? Random.Shared : new Random(seed.Value);
     }
 
+    /// <summary>The rotation key for a show's holiday episodes: separate from the everyday rotation, and fresh each year.</summary>
+    public static string HolidayKey(string show, string holiday, int year) => $"{show} [holiday:{holiday} {year}]";
+
     /// <summary>The length of the episode <see cref="Next"/> would return, or null when there are no episodes.</summary>
-    public long? PeekDuration(string show, string channel)
+    public long? PeekDuration(string show, string channel) => PeekDuration(show, channel, _db.EpisodesOf(show));
+
+    /// <summary>The length of the holiday episode <see cref="NextHoliday"/> would return, or null when there are none left (or none at all).</summary>
+    public long? PeekHolidayDuration(string show, string channel, string holiday, int year, HolidayMode mode)
     {
-        IReadOnlyList<CatalogEntry> episodes = _db.EpisodesOf(show);
+        IReadOnlyList<CatalogEntry> episodes = _db.HolidayEpisodesOf(show, holiday);
+        if (episodes.Count == 0) return null;
+        string key = HolidayKey(show, holiday, year);
+        if (mode == HolidayMode.First && Exhausted(key, channel, episodes)) return null;
+        return PeekDuration(key, channel, episodes);
+    }
+
+    /// <summary>
+    /// The next holiday episode of the show, on its own rotation. With <see cref="HolidayMode.First"/> the list
+    /// plays through once per year and then returns null so the caller falls back to the regular rotation; with
+    /// <see cref="HolidayMode.Only"/> it wraps round. Null when the show has no such episodes.
+    /// </summary>
+    public CatalogEntry? NextHoliday(string show, string channel, string holiday, int year, OrderMode order, HolidayMode mode)
+    {
+        IReadOnlyList<CatalogEntry> episodes = _db.HolidayEpisodesOf(show, holiday);
+        if (episodes.Count == 0) return null;
+        string key = HolidayKey(show, holiday, year);
+        if (mode == HolidayMode.First && Exhausted(key, channel, episodes)) return null;
+        var state = _db.GetRotation(key, channel);
+        return order == OrderMode.Chronological
+            ? NextChronological(key, channel, episodes, state, wrap: mode == HolidayMode.Only)
+            : NextShuffle(key, channel, episodes, state);
+    }
+
+    /// <summary>Has every episode in the list had its turn under this key? Chronological parks at the end; shuffle leaves an empty cycle.</summary>
+    private bool Exhausted(string key, string channel, IReadOnlyList<CatalogEntry> episodes)
+    {
+        var state = _db.GetRotation(key, channel);
+        if (state is not { } s) return false;
+        if (s.Mode == nameof(OrderMode.Chronological)) return s.NextPosition is { } p && p >= episodes.Count;
+        Cycle? cycle = ReadCycle(s.CycleJson);
+        return cycle is not null && cycle.Members.Count > 0 && !cycle.Remaining.Any(id => episodes.Any(e => e.Item.Id == id))
+               && episodes.All(e => cycle.Members.Contains(e.Item.Id));
+    }
+
+    private long? PeekDuration(string show, string channel, IReadOnlyList<CatalogEntry> episodes)
+    {
         if (episodes.Count == 0) return null;
         var state = _db.GetRotation(show, channel);
         if (state is { } s)
@@ -48,7 +90,7 @@ public sealed class EpisodePicker
             : NextShuffle(show, channel, episodes, state);
     }
 
-    private CatalogEntry NextChronological(string show, string channel, IReadOnlyList<CatalogEntry> episodes, (string Mode, int? NextPosition, string? CycleJson)? state)
+    private CatalogEntry NextChronological(string show, string channel, IReadOnlyList<CatalogEntry> episodes, (string Mode, int? NextPosition, string? CycleJson)? state, bool wrap = true)
     {
         int position = 0;
         if (state is { } s && s.Mode == nameof(OrderMode.Chronological) && s.NextPosition is { } p)
@@ -58,7 +100,9 @@ public sealed class EpisodePicker
 
         if (position >= episodes.Count) position = 0;
         CatalogEntry pick = episodes[position];
-        _db.SetRotation(show, channel, nameof(OrderMode.Chronological), (position + 1) % episodes.Count, null);
+        // Without wrapping the position parks at the end, which Exhausted() reads as "all played".
+        int next = wrap ? (position + 1) % episodes.Count : position + 1;
+        _db.SetRotation(show, channel, nameof(OrderMode.Chronological), next, null);
         return pick;
     }
 

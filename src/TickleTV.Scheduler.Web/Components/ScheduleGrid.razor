@@ -89,6 +89,7 @@
         string order = s.OrderMode == OrderMode.Shuffle ? "shuffled" : "in order";
         string label = s.ShowList.Count == 0 ? "(no show)" : s.Label;
         string kind = s.ShowList.Count > 1 ? (s.RandomTurns ? "random show next, " : "take turns, ") : "";
-        return new Block(label, s.StartTime.ToString("h:mm tt").ToLowerInvariant(), span, colours.GetValueOrDefault(s.Label, 1), $"{label} from {s.StartTime:h:mm tt}, {kind}{order}");
+        string holiday = s.HolidayWords is { } hw ? $", {hw}" : "";
+        return new Block(label, s.StartTime.ToString("h:mm tt").ToLowerInvariant(), span, colours.GetValueOrDefault(s.Label, 1), $"{label} from {s.StartTime:h:mm tt}, {kind}{order}{holiday}");
     }
 }

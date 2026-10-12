@@ -38,6 +38,8 @@ public sealed class ChannelBuilder
     /// <summary>The show that played last in each block (index into the slot's show list; -1 when none has yet).</summary>
     private readonly Dictionary<SlotConfig, int> _lastTurn = new();
     private readonly Dictionary<DayPlan, List<SlotConfig>> _sorted = new();
+    /// <summary>Where the build has got to, for choices that depend on the date (the holiday rotation is per year).</summary>
+    private DateTimeOffset _cursor;
 
     public ChannelBuilder(CatalogDb db, EpisodePicker picker, ChannelConfig channel, string schemaVersion, Action<string>? log = null, int? seed = null)
     {
@@ -113,6 +115,7 @@ public sealed class ChannelBuilder
 
             // Hold the grid: a short stretch before the next slot that no episode fits into becomes a station break.
             long untilNextMs = (long)(nextSlotStart - cursor).TotalMilliseconds;
+            _cursor = cursor;
             string? show = ChooseShow(slot, untilNextMs);
             if (show is null)
             {
@@ -120,20 +123,20 @@ public sealed class ChannelBuilder
                 continue;
             }
 
-            CatalogEntry? episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
+            CatalogEntry? episode = PickEpisode(slot, show, cursor);
             // A show with no episodes hands its turn to another show in the block.
             var tried = new HashSet<int> { IndexOfShow(slot, show) };
             while (episode is null && tried.Count < slot.ShowList.Count)
             {
-                warnings.Add($"No episodes found for show '{show}'; skipping its turn.");
+                warnings.Add($"No {EpisodeWords(slot)} found for show '{show}'; skipping its turn.");
                 show = TakeTurn(slot, TurnOrder(slot).First(i => !tried.Contains(i)));
                 tried.Add(IndexOfShow(slot, show));
-                episode = ReusePrior(show) ?? _picker.Next(show, _channel.Number, slot.OrderMode);
+                episode = PickEpisode(slot, show, cursor);
             }
 
             if (episode is null)
             {
-                warnings.Add($"No episodes found for show '{show}'. Slate until {nextSlotStart:HH:mm}.");
+                warnings.Add($"No {EpisodeWords(slot)} found for show '{show}'. Slate until {nextSlotStart:HH:mm}.");
                 DateTimeOffset slateEnd = nextSlotStart > cursor ? nextSlotStart : cursor.AddMinutes(30);
                 items.Add(SpikeBuilder.Slate($"slate-{++idCounter}", cursor, (long)(slateEnd - cursor).TotalMilliseconds));
                 programmes.Add(new GuideProgramme { Start = cursor, Stop = slateEnd, Title = $"{slot.Label} (no episodes)" });
@@ -248,7 +251,7 @@ public sealed class ChannelBuilder
         if (holding)
         {
             foreach (int idx in order)
-                if (NextEpisodeFits(shows[idx], untilNextMs)) return TakeTurn(slot, idx);
+                if (NextEpisodeFits(slot, shows[idx], _cursor, untilNextMs)) return TakeTurn(slot, idx);
             if (untilNextMs <= _channel.Gap.MaxMinutes * 60_000L) return null;
         }
         return TakeTurn(slot, order[0]);
@@ -290,11 +293,34 @@ public sealed class ChannelBuilder
     }
 
     /// <summary>Would the show's next episode (without consuming it) finish before the next slot starts?</summary>
-    private bool NextEpisodeFits(string show, long untilNextMs)
+    private bool NextEpisodeFits(SlotConfig slot, string show, DateTimeOffset at, long untilNextMs)
     {
-        long? duration = PeekPriorDuration(show) ?? _picker.PeekDuration(show, _channel.Number);
+        long? duration = PeekPriorDuration(show);
+        if (duration is null && slot.HolidayMode != HolidayMode.Any && slot.Holiday is { } holiday)
+            duration = _picker.PeekHolidayDuration(show, _channel.Number, holiday, at.Year, slot.HolidayMode);
+        if (duration is null && slot.HolidayMode != HolidayMode.Only)
+            duration ??= _picker.PeekDuration(show, _channel.Number);
         return duration is null || duration.Value <= untilNextMs;
     }
+
+    /// <summary>
+    /// The next episode for a show in this slot: an earlier build's assignment first, then the slot's holiday
+    /// choice (its own rotation), then the regular rotation unless the slot wants holiday episodes only.
+    /// </summary>
+    private CatalogEntry? PickEpisode(SlotConfig slot, string show, DateTimeOffset at)
+    {
+        if (ReusePrior(show) is { } prior) return prior;
+        if (slot.HolidayMode != HolidayMode.Any && slot.Holiday is { } holiday)
+        {
+            CatalogEntry? festive = _picker.NextHoliday(show, _channel.Number, holiday, at.Year, slot.OrderMode, slot.HolidayMode);
+            if (festive is not null) return festive;
+            if (slot.HolidayMode == HolidayMode.Only) return null;
+        }
+        return _picker.Next(show, _channel.Number, slot.OrderMode);
+    }
+
+    private static string EpisodeWords(SlotConfig slot) =>
+        slot.HolidayMode == HolidayMode.Only && slot.Holiday is { } h ? $"{Holidays.Find(h)?.Name ?? h} episodes" : "episodes";
 
     private long? PeekPriorDuration(string show)
     {

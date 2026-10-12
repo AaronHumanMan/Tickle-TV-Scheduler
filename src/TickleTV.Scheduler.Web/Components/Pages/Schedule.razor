@@ -61,6 +61,7 @@ else
     private SchedulerConfig? cfg;
     private IReadOnlyList<string> shows = [];
     private Dictionary<string, long> lengths = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, IReadOnlyDictionary<string, int>> holidayCounts = new(StringComparer.OrdinalIgnoreCase);
     private string? notice;
     private List<string> problems = [];
     private string view = "list";
@@ -186,6 +187,20 @@ else
                                     </select>
                                 </label>
                             }
+                            <label class="turns">Holiday episodes:
+                                <select value="@(slot.HolidayEpisodes ?? "any")" @onchange="e => SetHolidayMode(slot, e.Value?.ToString())">
+                                    <option value="any">Any episode (no holiday rule)</option>
+                                    <option value="first">Holiday episodes first, then the rest</option>
+                                    <option value="only">Holiday episodes only</option>
+                                </select>
+                                @if (slot.HolidayMode != HolidayMode.Any)
+                                {
+                                    <select value="@(slot.Holiday ?? "christmas")" @onchange="e => slot.Holiday = e.Value?.ToString()">
+                                        @foreach (var h in HolidayTagger.Choices) { <option value="@h.Key">@h.Name</option> }
+                                    </select>
+                                }
+                            </label>
+                            @if (slot.HolidayMode != HolidayMode.Any && HolidayCountWords(slot) is { } hc) { <p class="block-note">@hc</p> }
                             @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
                         </td>
                         <td>
@@ -270,10 +285,37 @@ else
             var summaries = Catalog.Run(db => db.ListShowSummaries());
             shows = summaries.Select(s => s.Show).ToList();
             lengths = summaries.ToDictionary(s => s.Show, s => s.AvgDurationMs, StringComparer.OrdinalIgnoreCase);
+            holidayCounts = summaries.ToDictionary(s => s.Show, s => s.Holidays, StringComparer.OrdinalIgnoreCase);
         }
     }
 
     private long? AverageOf(string show) => lengths.TryGetValue(show, out long ms) ? ms : null;
+
+    private static void SetHolidayMode(SlotConfig slot, string? mode)
+    {
+        slot.HolidayEpisodes = mode is "first" or "only" ? mode : null;
+        if (slot.HolidayEpisodes is null) slot.Holiday = null;
+        else slot.Holiday ??= "christmas";
+    }
+
+    /// <summary>"Good Eats has 1 Christmas Day episode, Modern Marvels has 2", or a warning when none of the slot's shows has any.</summary>
+    private string? HolidayCountWords(SlotConfig slot)
+    {
+        string holiday = slot.Holiday ?? "christmas";
+        string name = HolidayTagger.Name(holiday);
+        var parts = new List<string>();
+        int total = 0;
+        foreach (string show in slot.ShowList.Where(s => !string.IsNullOrWhiteSpace(s)))
+        {
+            int n = holidayCounts.TryGetValue(show, out var per) && per.TryGetValue(holiday, out int c) ? c : 0;
+            total += n;
+            parts.Add($"{show} has {n}");
+        }
+        if (parts.Count == 0) return null;
+        if (total == 0)
+            return $"None of the shows here has a {name} episode yet. " + (slot.HolidayMode == HolidayMode.Only ? "This slot would have nothing to play." : "The slot will play regular episodes until some are labelled.") + " Confirm or add holiday episodes on the Needs attention or Library page.";
+        return $"{name} episodes: {string.Join(", ", parts)}.";
+    }
 
     private string LengthWords(string show) => AverageOf(show) is { } ms ? $"about {(ms + 30_000) / 60_000} min" : "";
 

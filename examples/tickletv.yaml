@@ -72,6 +72,8 @@ channels:
       #   - { plan: Weekend, days: [saturday, sunday] }
       #   - { plan: Christmas, holiday: christmas, days_before: 6 }   # the week leading up to Christmas Day
       #   - { plan: Summer, from: "07-01", to: "08-31" }              # every year
+      # A slot in the Christmas plan that favours Christmas episodes:
+      #   - { time: "20:00", show: The Simpsons, holiday: christmas, holiday_episodes: first }
       # A block: several shows share the slot and take turns, one episode each, in this order.
       # turns: random picks the next show at random instead (never the same show twice in a row).
       # - time: "01:00"
