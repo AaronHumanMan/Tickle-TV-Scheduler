@@ -9,15 +9,18 @@
 
 <PageTitle>Build the schedule</PageTitle>
 
-<h1>Build the schedule</h1>
-<p class="lead">Building turns your daily schedule into the next day of television for ErsatzTV: episodes in order, commercial breaks between scenes, bumpers, and every show ending on time. Preview first to see the plan; nothing changes until you press Build.</p>
+<PageHead Title="Build the schedule" Code="40274-09">Building turns your daily schedule into the next day of television for ErsatzTV: episodes in order, commercial breaks between scenes, bumpers, and every show ending on time. Preview first to see the plan; nothing changes until you press Build.</PageHead>
+
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 
 @if (cfg is null || cfg.Channels.Count == 0)
 {
     <div class="card warn">
         <h2>No schedule yet</h2>
         <p>There's no channel schedule to build from. Go to <a href="schedule">Schedule</a> and add a time slot.</p>
-        <a class="button primary" href="schedule">Go to Schedule</a>
+        <a class="button primary" href="schedule" data-sound="keyok">Go to Schedule</a>
     </div>
 }
 else
@@ -26,8 +29,8 @@ else
         <h2>Your daily schedule</h2>
         <div class="view-toggle">
             <span class="muted">Show as</span>
-            <button class="chip @(view == "grid" ? "active" : "")" @onclick="@(() => SetView("grid"))">Guide grid</button>
-            <button class="chip @(view == "list" ? "active" : "")" @onclick="@(() => SetView("list"))">Lists</button>
+            <button class="chip @(view == "grid" ? "active" : "")" data-sound="keyok" @onclick="@(() => SetView("grid"))">Guide grid</button>
+            <button class="chip @(view == "list" ? "active" : "")" data-sound="keyok" @onclick="@(() => SetView("list"))">Lists</button>
         </div>
         @if (view == "grid")
         {
@@ -60,16 +63,25 @@ else
             <input type="number" min="1" max="@BuildOptions.MaxDays" @bind="days" /> <span class="muted">(1 to @BuildOptions.MaxDays; one day is plenty if you build every day)</span>
         </label>
         <div class="actions">
-            <button class="button" disabled="@Jobs.IsBusy" @onclick="Preview">Preview @DaysWord</button>
-            <button class="button primary" disabled="@Jobs.IsBusy" @onclick="BuildNow">Build @DaysWord and send to ErsatzTV</button>
+            <button class="button" data-sound="keyok" disabled="@Jobs.IsBusy" @onclick="Preview">Preview @DaysWord</button>
+            <button class="button primary" data-sound="keyok" disabled="@Jobs.IsBusy" @onclick="BuildNow">Build @DaysWord and send to ErsatzTV</button>
         </div>
         @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
     </div>
 }
 
 <JobPanel />
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Schedule", "schedule", 1),
+        new("Calendar", "calendar", 2),
+        new("Channels", "channels", 3),
+        new("Help", "help"),
+    ];
     private static DayPlan TodayPlan(ChannelConfig ch) => PlanCalendar.PlanFor(ch, DateOnly.FromDateTime(DateTime.Now));
 
     private SchedulerConfig? cfg;

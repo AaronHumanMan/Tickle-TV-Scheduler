@@ -7,8 +7,11 @@
 
 <PageTitle>Calendar</PageTitle>
 
-<h1>Calendar</h1>
-<p class="lead">A channel can have more than one <strong>day plan</strong>, each a full daily grid made on the <a href="schedule">Schedule</a> page: Normal Day, Weekend, Christmas. This page says which plan each date follows. Set rules in plain words, or tick days on the calendar and choose a plan for them. A plan takes over at its first time slot, so the night before runs to its normal end. Press <strong>Save calendar</strong> when you're done.</p>
+<PageHead Title="Calendar" Code="40274-08">A channel can have more than one <strong>day plan</strong>, each a full daily grid made on the <a href="schedule">Schedule</a> page: Normal Day, Weekend, Christmas. This page says which plan each date follows. Set rules in plain words, or tick days on the calendar and choose a plan for them. A plan takes over at its first time slot, so the night before runs to its normal end. Press <strong>Save calendar</strong> when you're done.</PageHead>
+
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 
 @if (cfg is null)
 {
@@ -21,7 +24,7 @@ else
         <div class="filters">
             @foreach (var c in cfg.Channels)
             {
-                <button class="chip @(c.Number == channelNumber ? "active" : "")" @onclick="() => channelNumber = c.Number">Channel @c.Number: @c.Name</button>
+                <button class="chip @(c.Number == channelNumber ? "active" : "")" data-sound="keyok" @onclick="() => channelNumber = c.Number">Channel @c.Number: @c.Name</button>
             }
         </div>
     }
@@ -36,9 +39,9 @@ else
     <div class="card">
         <h2>@MonthName @year</h2>
         <div class="actions cal-nav">
-            <button class="button secondary" @onclick="() => Move(-1)">&lsaquo; Previous month</button>
-            <button class="button secondary" @onclick="GoToday">This month</button>
-            <button class="button secondary" @onclick="() => Move(1)">Next month &rsaquo;</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => Move(-1)">&lsaquo; Previous month</button>
+            <button class="button secondary" data-sound="keyok" @onclick="GoToday">This month</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => Move(1)">Next month &rsaquo;</button>
         </div>
 
         <div class="cal-apply">
@@ -49,7 +52,7 @@ else
                 </select>
             </label>
             <span>on the ticked days</span>
-            <button class="button" disabled="@(ticked.Count == 0)" @onclick="Apply">Apply to @ticked.Count day@(ticked.Count == 1 ? "" : "s")</button>
+            <button class="button" data-sound="keyok" disabled="@(ticked.Count == 0)" @onclick="Apply">Apply to @ticked.Count day@(ticked.Count == 1 ? "" : "s")</button>
             <span class="muted">Tick:</span>
             <button class="link" @onclick="() => Tick(d => d.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))">weekdays</button>
             <button class="link" @onclick="() => Tick(d => d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)">weekends</button>
@@ -164,16 +167,16 @@ else
         }
 
         <div class="actions">
-            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Days = ["saturday", "sunday"] })'>Add a days-of-the-week rule</button>
-            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Holiday = "christmas", DaysBefore = 6, DaysAfter = 0 })'>Add a holiday rule</button>
-            <button class="button" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), From = "12-18", To = "12-26" })'>Add a date range</button>
+            <button class="button" data-sound="keyok" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Days = ["saturday", "sunday"] })'>Add a days-of-the-week rule</button>
+            <button class="button" data-sound="keyok" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), Holiday = "christmas", DaysBefore = 6, DaysAfter = 0 })'>Add a holiday rule</button>
+            <button class="button" data-sound="keyok" disabled="@(plans.Count < 2)" @onclick='() => ch.Calendar.Add(new CalendarRule { Plan = OtherPlan(ch), From = "12-18", To = "12-26" })'>Add a date range</button>
         </div>
     </div>
 
     <div class="actions save-row">
-        <button class="button primary" @onclick="Save">Save calendar</button>
-        <a class="button secondary" href="schedule">Edit the day plans</a>
-        <a class="button secondary" href="build">Go to Build</a>
+        <button class="button primary" data-sound="keyok" @onclick="Save">Save calendar</button>
+        <a class="button secondary" href="schedule" data-sound="keyok">Edit the day plans</a>
+        <a class="button secondary" href="build" data-sound="keyok">Go to Build</a>
     </div>
     @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
     @if (problems.Count > 0)
@@ -181,8 +184,17 @@ else
         <div class="card warn"><ul>@foreach (string p in problems) { <li>@p</li> }</ul></div>
     }
 }
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Schedule", "schedule", 1),
+        new("Build", "build", 2),
+        new("Channels", "channels", 3),
+        new("Help", "help"),
+    ];
     private SchedulerConfig? cfg;
     private string? notice;
     private List<string> problems = [];

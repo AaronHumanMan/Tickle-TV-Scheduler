@@ -2,8 +2,11 @@
 
 <PageTitle>Help</PageTitle>
 
-<h1>Help</h1>
-<p class="lead">Tickle TV turns your video files into a TV channel that runs all day, with commercial breaks, just like real TV. This page explains each step in plain words.</p>
+<PageHead Title="Help" Code="40274-10">Tickle TV turns your video files into a TV channel that runs all day, with commercial breaks, just like real TV. This page explains each step in plain words.</PageHead>
+
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 
 <div class="card">
     <h2>Step 1: Scan your videos</h2>
@@ -85,3 +88,16 @@
         <dt>Catalog</dt><dd>Tickle TV's list of everything it has scanned, plus the labels you've added.</dd>
     </dl>
 </div>
+</div>
+</section>
+
+@code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Scan", "scan", 1),
+        new("Needs attention", "review", 2),
+        new("Schedule", "schedule", 3),
+        new("Build", "build", 4),
+        new("Home", ""),
+    ];
+}
