@@ -341,7 +341,7 @@ public sealed class CatalogDb : IDisposable
                  AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = 'brand-not-needed') THEN 'NoBrand'
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%') THEN 'NoCategory'
             WHEN m.kind = 'Bumper' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ('promo', 'station-id', 'break-card')) THEN 'BumperUnsorted'
-            WHEN m.kind IN ('Episode', 'Movie')
+            WHEN m.kind IN ('Episode', 'Movie', 'Commercial', 'Bumper')
                  AND EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'holiday:%' AND t.source <> 'manual')
                  AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.source = 'manual' AND (t.tag LIKE 'holiday:%' OR t.tag = 'not-holiday')) THEN 'HolidayGuess'
             WHEN m.kind = 'Episode' AND (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) <= 1 THEN 'NoChapters'

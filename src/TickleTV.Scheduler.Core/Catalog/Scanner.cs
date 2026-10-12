@@ -225,18 +225,19 @@ public sealed class Scanner
     }
 
     /// <summary>
-    /// Holiday episodes from the title, the sidecar plot, or the air date. A person's answer (a manual holiday
-    /// label, or not-holiday) is left alone and switches the guessing off for that file.
+    /// Holiday episodes, films, commercials and bumpers from the title, the sidecar plot, or (episodes only) the
+    /// air date. A person's answer (a manual holiday label, or not-holiday) is left alone and switches the
+    /// guessing off for that file.
     /// </summary>
     private void ApplyHolidayTags(long id, ParsedName parsed, MediaItem item)
     {
-        if (item.Kind is not (MediaKind.Episode or MediaKind.Movie)) return;
+        if (item.Kind is not (MediaKind.Episode or MediaKind.Movie or MediaKind.Commercial or MediaKind.Bumper)) return;
         IReadOnlyList<Tag> manual = _db.GetTags(id);
         if (manual.Any(t => t.Source == FactSource.Manual && (t.Name == HolidayTagger.NotHoliday || t.Name.StartsWith(HolidayTagger.Prefix)))) return;
 
         // A person's episode facts beat the parsed ones, title included.
         EpisodeInfo? episode = _db.GetEpisode(id);
-        string? title = item.Kind == MediaKind.Movie ? item.Title : (episode?.EpisodeTitle ?? parsed.EpisodeTitle);
+        string? title = item.Kind == MediaKind.Episode ? (episode?.EpisodeTitle ?? parsed.EpisodeTitle) : item.Title;
         string titleSource = episode?.Source == FactSource.Manual ? FactSource.Manual : (parsed.KindSource == FactSource.Nfo ? FactSource.Nfo : FactSource.Filename);
         foreach (HolidayHit hit in HolidayTagger.Hits(title, titleSource, episode?.Plot ?? parsed.Plot, episode?.AirDate ?? parsed.AirDate))
             _db.AddTag(id, hit.Tag, hit.Source == FactSource.Manual ? FactSource.Filename : hit.Source);

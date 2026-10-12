@@ -148,12 +148,12 @@
                     <label>Episode title (optional) <input @bind="choice.EpisodeTitle" /></label>
                 }
 
-                @if (choice.Kind is MediaKind.Episode or MediaKind.Movie)
+                @if (choice.Kind is MediaKind.Episode or MediaKind.Movie or MediaKind.Commercial or MediaKind.Bumper)
                 {
-                    <label>Holiday episode?
+                    <label>@(choice.Kind is MediaKind.Commercial or MediaKind.Bumper ? "Holiday commercial or bumper?" : "Holiday episode?")
                         <select @bind="choice.Holiday">
                             <option value="">@(LibraryActions.GuessedHolidays(e) is { Length: > 0 } g ? $"Let the scan decide (it says: {g})" : "Let the scan decide (it says: not a holiday episode)")</option>
-                            <option value="none">No, not a holiday episode</option>
+                            <option value="none">No, nothing to do with a holiday</option>
                             @foreach (var h in HolidayTagger.Choices) { <option value="@h.Key">Yes: @h.Name</option> }
                         </select>
                     </label>

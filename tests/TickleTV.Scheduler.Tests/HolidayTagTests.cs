@@ -115,6 +115,30 @@ public class HolidayTagTests : IDisposable
     }
 
     [Fact]
+    public async Task Commercials_and_bumpers_get_holiday_tags_too_and_pools_can_ask_for_them()
+    {
+        string ad = MakeFile(@"Commercials\90s\Food\Coca-Cola - Christmas polar bears 1993.mp4", "ad-1");
+        string plain = MakeFile(@"Commercials\90s\Food\Taco Bell MC Hammer Commercial 1991.mp4", "ad-2");
+        string bumper = MakeFile(@"Commercials\90s\Bumpers and Promos\ABC - Happy Halloween, we'll be right back.mp4", "bump-1");
+        ScanReport report = await new Scanner(_db, new StubProber()).ScanAsync([_root]);
+        Assert.Empty(report.Errors);
+
+        CatalogEntry a = _db.GetEntry(_db.FindByPath(ad)!.Id)!;
+        Assert.Equal(MediaKind.Commercial, a.Item.Kind);
+        Assert.Contains(a.Tags, t => t.Name == "holiday:christmas" && t.Source == FactSource.Filename);
+        CatalogEntry b = _db.GetEntry(_db.FindByPath(bumper)!.Id)!;
+        Assert.Equal(MediaKind.Bumper, b.Item.Kind);
+        Assert.Contains(b.Tags, t => t.Name == "holiday:halloween");
+        Assert.DoesNotContain(_db.GetEntry(_db.FindByPath(plain)!.Id)!.Tags, t => t.Name.StartsWith("holiday:"));
+
+        Assert.Equal(2, _db.CountNeedingAttention()[AttentionReason.HolidayGuess]);
+        var pool = PoolQuery.Parse("kind = commercial AND tag:holiday:christmas");
+        var picked = pool.Filter(_db.ListItems(MediaKind.Commercial).Select(i => _db.GetEntry(i.Id)!)).ToList();
+        Assert.Single(picked);
+        Assert.Equal(ad, picked[0].Item.Path);
+    }
+
+    [Fact]
     public async Task A_persons_answer_sticks_through_a_rescan()
     {
         string hint = MakeFile(@"Shows\The Simpsons\Season 2\The Simpsons - 1990-12-20 - S02E10 - Bart Gets Hit by a Car.mkv", "video-5");

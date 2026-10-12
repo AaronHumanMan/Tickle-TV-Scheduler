@@ -100,7 +100,7 @@ public sealed class LibraryActions
                 }
             }
 
-            if (c.Kind is MediaKind.Episode or MediaKind.Movie && !string.IsNullOrEmpty(c.Holiday))
+            if (c.Kind is MediaKind.Episode or MediaKind.Movie or MediaKind.Commercial or MediaKind.Bumper && !string.IsNullOrEmpty(c.Holiday))
             {
                 foreach (Tag t in current.Tags.Where(t => t.Name.StartsWith(HolidayTagger.Prefix) || t.Name == HolidayTagger.NotHoliday)) db.RemoveTag(itemId, t.Name);
                 if (c.Holiday == "none")
@@ -147,7 +147,7 @@ public sealed class LibraryActions
         AttentionReason.NoCategory => "This commercial has no category yet.",
         AttentionReason.BumperUnsorted => "This is in a bumper folder, but I can't tell if it's a station ID, a break card, or a promo for a show.",
         AttentionReason.NoChapters => "This episode has no chapter marks, so it will play straight through with commercials only at the end. Nothing to fix unless you want breaks inside it; adding chapter marks to the file does that.",
-        AttentionReason.HolidayGuess => "The scan thinks this is a holiday episode. Press Yes or No so holiday slots can trust it.",
+        AttentionReason.HolidayGuess => "The scan thinks this is a holiday episode, commercial or bumper. Press Yes or No so holiday slots and pools can trust it.",
         _ => "",
     };
 
@@ -163,7 +163,8 @@ public sealed class LibraryActions
             FactSource.AirDate => e.Episode?.AirDate is { } d ? $"only because it first aired on {d:MMMM d, yyyy}" : "from its air date",
             _ => "from its title",
         };
-        return $"The scan thinks this is a {names} episode, {because}. Is that right?";
+        string what = e.Item.Kind switch { MediaKind.Commercial => "commercial", MediaKind.Bumper => "bumper", MediaKind.Movie => "film", _ => "episode" };
+        return $"The scan thinks this is a {names} {what}, {because}. Is that right?";
     }
 
     public static string ReasonTitle(AttentionReason reason) => reason switch
