@@ -13,7 +13,13 @@ if (!firstCopy)
     return;
 }
 
-var builder = WebApplication.CreateBuilder(args);
+// The installed program carries its own wwwroot. Use the program's folder as the content root so the pages find
+// their stylesheet and scripts however the app was started (a shortcut, the sign-in entry, or a different folder).
+// During development there is no wwwroot beside the binary, so the project folder stays the content root.
+var options = new WebApplicationOptions { Args = args };
+if (Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot")))
+    options = new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory };
+var builder = WebApplication.CreateBuilder(options);
 if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls(DefaultUrl);
 
 builder.Services.AddRazorComponents()

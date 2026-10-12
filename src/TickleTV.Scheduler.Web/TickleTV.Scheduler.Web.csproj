@@ -7,7 +7,10 @@
   <PropertyGroup>
     <!-- Windows only: the app lives in the tray by the clock and opens in the browser; it has no console window. -->
     <TargetFramework>net10.0-windows</TargetFramework>
-    <OutputType>WinExe</OutputType>
+    <!-- Stays a console-type project because the Web SDK only ships the Blazor script for OutputType Exe;
+         the launcher is still built as a windowed program, so no console window appears. -->
+    <OutputType>Exe</OutputType>
+    <_UseWindowsGraphicalUserInterface>true</_UseWindowsGraphicalUserInterface>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
