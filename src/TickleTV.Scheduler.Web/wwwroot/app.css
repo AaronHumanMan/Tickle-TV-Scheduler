@@ -39,7 +39,7 @@ a:hover { color: var(--cream); text-decoration: underline; }
 /* an orange patch under the top-left corner so the content's rounded corner reads as the inner curve of the elbow */
 .lcars-body::before { content: ""; position: absolute; left: 0; top: 0; width: calc(var(--sidebar-w) + 60px); height: 60px; background: var(--orange); }
 .sidebar { position: relative; width: var(--sidebar-w); flex-shrink: 0; display: flex; flex-direction: column; gap: 5px; z-index: 1; }
-.sidebar .arm { height: 54px; background: var(--orange); }
+.sidebar .arm { height: 54px; background: var(--orange); display: flex; align-items: flex-end; justify-content: flex-end; padding: 6px 12px; color: var(--black); font-weight: 700; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 .nav-link { display: flex; align-items: flex-end; justify-content: flex-end; min-height: 52px; padding: 6px 12px; color: var(--black); font-weight: 700; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; text-decoration: none; background: var(--lavender); }
 .nav-link:nth-child(3n+1) { background: var(--violet); }
 .nav-link:nth-child(3n+2) { background: var(--peach); }
@@ -52,6 +52,7 @@ a:hover { color: var(--cream); text-decoration: underline; }
 
 /* ---------- type ---------- */
 h1 { font-size: 2.3rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--orange); margin: 0 0 6px; line-height: 1.05; }
+.subtitle { font-size: 1.15rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--orange); margin: 0 0 14px; line-height: 1.1; }
 h2 { font-size: 1.45rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--peach); margin: 0 0 8px; }
 h3 { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--lavender); margin: 16px 0 6px; }
 p { margin: 0 0 10px; }
