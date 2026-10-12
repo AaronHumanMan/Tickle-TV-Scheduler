@@ -1,0 +1,25 @@
+@* The page title block in the personnel-files style: a big orange title with its code number, right aligned,
+   a line under it, then the double rail. The lead paragraph (ChildContent) sits under the rail, left aligned. *@
+
+<header class="page-title">
+    <h1>@Title &bull; @Code</h1>
+    @if (!string.IsNullOrEmpty(Subtitle)) { <div class="subtitle">@Subtitle</div> }
+</header>
+
+<div class="rails" aria-hidden="true">
+    <div class="rail one"><span class="s violet"></span><span class="sep"></span><span class="s lavender"></span><span class="s red"></span><span class="sep"></span></div>
+    <div class="rail two"><span class="s red stub"></span><span class="s red"></span><span class="sep"></span><span class="s violet"></span><span class="s lavender"></span></div>
+</div>
+
+@if (ChildContent is not null)
+{
+    <div class="lead">@ChildContent</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    /// <summary>The page's code number, shown after the title: 40274 for Home, 40274-01 for Scan, and so on.</summary>
+    [Parameter] public string Code { get; set; } = "40274";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

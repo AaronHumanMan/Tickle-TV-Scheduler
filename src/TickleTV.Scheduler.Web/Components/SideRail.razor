@@ -1,0 +1,20 @@
+@* The numbered column down the left of a page's lower zone: coloured blocks that link to related pages.
+   Colours cycle red, orange, red, lavender; the last block grows to fill the column. *@
+
+<nav class="step-rail" aria-label="@Label">
+    @for (int i = 0; i < Links.Count; i++)
+    {
+        var link = Links[i];
+        bool last = i == Links.Count - 1;
+        <a class="step @Colour(i) @(last ? "grow" : "")" href="@link.Href" data-sound="keyok">@(link.Number is { } n ? $"{n:00} " : "")@link.Text</a>
+    }
+</nav>
+
+@code {
+    public sealed record Link(string Text, string Href, int? Number = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Link> Links { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "Related pages";
+
+    private static string Colour(int i) => (i % 4) switch { 0 => "red", 1 => "orange", 2 => "red", _ => "lavender" };
+}

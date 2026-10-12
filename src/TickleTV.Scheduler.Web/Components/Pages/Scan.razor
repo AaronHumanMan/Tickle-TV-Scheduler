@@ -9,9 +9,11 @@
 
 <PageTitle>Scan</PageTitle>
 
-<h1>Scan my videos</h1>
-<p class="lead">Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads each file once to learn how long it is and whether it has chapter marks, then sorts it by its name, or by the details in a <em>.nfo</em> file next to it if a media manager left one. Scanning again later only reads files that are new or changed.</p>
+<PageHead Title="Scan my videos" Code="40274-01">Tell Tickle TV which folders hold your shows, commercials, and bumpers. It reads each file once to learn how long it is and whether it has chapter marks, then sorts it by its name, or by the details in a <em>.nfo</em> file next to it if a media manager left one. Scanning again later only reads files that are new or changed.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 <div class="card">
     <h2>My media folders</h2>
     @if (roots.Count == 0)
@@ -29,7 +31,7 @@
     }
     <div class="inline-form">
         <input @bind="newRoot" placeholder="e.g. G:\Commercials or D:\My Videos" @onkeydown="OnKey" />
-        <button class="button" @onclick="Add">Add folder</button>
+        <button class="button" data-sound="keyok" @onclick="Add">Add folder</button>
     </div>
     <p class="muted">Tip: open the folder in File Explorer, click the address bar at the top, copy what's there, and paste it here.</p>
     @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
@@ -38,12 +40,21 @@
 <div class="card">
     <h2>Start a scan</h2>
     <p>Scanning a big library takes a while, about ten files a second. You can keep using the app while it runs.</p>
-    <button class="button primary" disabled="@(roots.Count == 0 || Jobs.IsBusy)" @onclick="ScanAll">Scan all my folders</button>
+    <button class="button primary" data-sound="keyok" disabled="@(roots.Count == 0 || Jobs.IsBusy)" @onclick="ScanAll">Scan all my folders</button>
 </div>
 
 <JobPanel />
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Needs attention", "review", 1),
+        new("Library", "library", 2),
+        new("My shows", "shows", 3),
+        new("Help", "help"),
+    ];
     private List<string> roots = [];
     private string newRoot = "";
     private string? notice;

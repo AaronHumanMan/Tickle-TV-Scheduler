@@ -261,9 +261,9 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 .button.small { min-height: 30px; padding: 4px 14px; font-size: 0.85rem; }
 
 /* ---------- Home, in the personnel-files style ---------- */
-.home-title { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; margin: 0 0 16px; }
-.home-title h1 { margin: 0; font-size: 2.6rem; letter-spacing: 0.01em; }
-.home-title .subtitle { color: var(--peach); font-size: 1.05rem; margin: 0; }
+.page-title, .home-title { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; margin: 0 0 16px; }
+.page-title h1, .home-title h1 { margin: 0; font-size: 2.6rem; letter-spacing: 0.01em; }
+.page-title .subtitle, .home-title .subtitle { color: var(--peach); font-size: 1.05rem; margin: 0; }
 .readout-row { display: flex; flex-wrap: wrap; gap: 18px 36px; align-items: flex-start; justify-content: space-between; }
 .readout-wrap { flex: 1 1 420px; min-width: 0; }
 .readout-wrap .readout-foot { margin: 6px 0 0; }
@@ -307,6 +307,9 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 .step-rail .step:hover { background: var(--cream); text-decoration: none; }
 .lower-panels { flex: 1 1 0; min-width: 0; }
 .lower-panels .card:first-child { margin-top: 0; }
+.page-title { margin-bottom: 10px; }
+.rails + .lead { margin-top: 0; }
+.lower { margin-top: 4px; }
 @media (max-width: 760px) {
   .lower { flex-direction: column; }
   .step-rail { width: auto; flex-direction: row; }
