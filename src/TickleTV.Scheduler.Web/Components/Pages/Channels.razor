@@ -8,9 +8,11 @@
 
 <PageTitle>Channels</PageTitle>
 
-<h1>Channels</h1>
-<p class="lead">Each channel is its own TV station with its own schedule and its own picture settings. Tickle TV creates the channel in ErsatzTV for you. ErsatzTV only reads channel settings when it starts, so <strong>restart ErsatzTV after adding or changing a channel</strong>.</p>
+<PageHead Title="Channels" Code="40274-06">Each channel is its own TV station with its own schedule and its own picture settings. Tickle TV creates the channel in ErsatzTV for you. ErsatzTV only reads channel settings when it starts, so <strong>restart ErsatzTV after adding or changing a channel</strong>.</PageHead>
 
+<section class="lower">
+<SideRail Links="rail" />
+<div class="lower-panels">
 @if (!string.IsNullOrEmpty(notice)) { <div class="notice">@notice</div> }
 
 @if (lineupPath is null || !File.Exists(lineupPath))
@@ -31,13 +33,13 @@ else
             @if (!inSchedule)
             {
                 <p class="why">This channel exists in ErsatzTV but has no schedule here yet.</p>
-                <button class="button" @onclick="() => AddToScheduler(ch)">Give it a schedule</button>
+                <button class="button" data-sound="keyok" @onclick="() => AddToScheduler(ch)">Give it a schedule</button>
             }
             else
             {
                 <p class="muted">Schedule: @scheduler.Channels.First(c => c.Number == ch.Number).Schedule.Count time slot(s). <a href="schedule">Edit the schedule</a></p>
             }
-            <button class="button secondary" @onclick="() => BeginEdit(ch)">@(editing?.Number == ch.Number ? "Hide settings" : "Picture and sound settings")</button>
+            <button class="button secondary" data-sound="keyok" @onclick="() => BeginEdit(ch)">@(editing?.Number == ch.Number ? "Hide settings" : "Picture and sound settings")</button>
 
             @if (editing?.Number == ch.Number)
             {
@@ -46,7 +48,7 @@ else
                     <label>Guide group (optional) <input @bind="editGroup" placeholder="e.g. Tickle TV" /></label>
                     <label>Logo address (optional) <input @bind="editLogo" placeholder="https://..." /></label>
                     <ProfileFields Profile="editProfile" />
-                    <button class="button primary" @onclick="SaveEdit">Save channel settings</button>
+                    <button class="button primary" data-sound="keyok" @onclick="SaveEdit">Save channel settings</button>
                 </div>
             }
         </div>
@@ -59,13 +61,22 @@ else
             <label>Channel name <input @bind="newName" placeholder="e.g. Kids TV" /></label>
             <label>Guide group (optional) <input @bind="newGroup" placeholder="e.g. Tickle TV" /></label>
             <ProfileFields Profile="newProfile" />
-            <button class="button primary" @onclick="AddChannel">Create the channel</button>
+            <button class="button primary" data-sound="keyok" @onclick="AddChannel">Create the channel</button>
         </div>
         <p class="muted">The new channel gets a starter schedule (the first show in your catalog, all day) that you can change on the Schedule page.</p>
     </div>
 }
+</div>
+</section>
 
 @code {
+    private static readonly IReadOnlyList<SideRail.Link> rail =
+    [
+        new("Schedule", "schedule", 1),
+        new("Calendar", "calendar", 2),
+        new("Build", "build", 3),
+        new("Help", "help"),
+    ];
     private string? lineupPath;
     private IReadOnlyList<NextChannel> channels = [];
     private SchedulerConfig scheduler = new();
