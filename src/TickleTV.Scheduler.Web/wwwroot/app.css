@@ -252,3 +252,7 @@ label.inline select { padding: 2px 6px; font-size: 0.9rem; }
 .rule label.inline, .rule label.check { display: inline-flex; align-items: center; gap: 6px; text-transform: none; font-weight: 400; color: var(--cream); font-size: 1rem; }
 .rule .rule-words { font-size: 0.85rem; }
 .rule input.day-num { width: 70px; }
+
+/* Holiday guesses waiting for a yes or no */
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 8px; color: var(--gold); }
+.button.small { min-height: 30px; padding: 4px 14px; font-size: 0.85rem; }

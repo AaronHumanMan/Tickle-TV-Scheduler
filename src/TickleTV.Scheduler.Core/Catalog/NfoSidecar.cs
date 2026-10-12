@@ -16,6 +16,7 @@ public sealed record NfoFacts
     public DateOnly? AirDate { get; init; }
     public int? Year { get; init; }
     public IReadOnlyList<string> Genres { get; init; } = [];
+    public string? Plot { get; init; }
 }
 
 /// <summary>
@@ -92,6 +93,7 @@ public static partial class NfoSidecar
                 Episode = episode,
                 AirDate = airDate,
                 EpisodeTitle = episodeTitle,
+                Plot = nfo.Plot,
                 Tags = tags.Distinct().ToList(),
             };
         }
@@ -112,6 +114,7 @@ public static partial class NfoSidecar
                 Episode = null,
                 AirDate = nfo.AirDate ?? parsed.AirDate,
                 EpisodeTitle = null,
+                Plot = nfo.Plot,
                 Tags = tags.Distinct().ToList(),
             };
         }
@@ -149,6 +152,7 @@ public static partial class NfoSidecar
         List<string> genres = root.Elements().Where(e => Local(e) == "genre").Select(e => e.Value.Trim()).Where(g => g.Length > 0).ToList();
         DateOnly? aired = Date(Text(root, "aired")) ?? Date(Text(root, "premiered"));
         int? year = Int(Text(root, "year")) ?? aired?.Year;
+        string? plot = Text(root, "plot") ?? Text(root, "outline");
 
         return kind switch
         {
@@ -162,6 +166,7 @@ public static partial class NfoSidecar
                 AirDate = aired,
                 Year = year,
                 Genres = genres,
+                Plot = plot,
             },
             "movie" => new NfoFacts
             {
@@ -170,6 +175,7 @@ public static partial class NfoSidecar
                 AirDate = aired,
                 Year = year,
                 Genres = genres,
+                Plot = plot,
             },
             _ => new NfoFacts
             {

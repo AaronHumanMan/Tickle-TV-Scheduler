@@ -104,6 +104,17 @@
                     <div class="tags">@foreach (var t in e.Tags.Where(t => !t.Name.StartsWith("show:"))) { <span class="tag @(t.Source == FactSource.Manual ? "manual" : "")">@t.Name</span> }</div>
                 }
                 @if (note is not null) { <div class="why">@note</div> }
+                @if (LibraryActions.HolidayGuessText(e) is { } guess)
+                {
+                    <div class="confirm">
+                        <span>@guess</span>
+                        @foreach (var h in e.Tags.Where(t => t.Source != FactSource.Manual && t.Name.StartsWith(HolidayTagger.Prefix)).Select(t => t.Name[HolidayTagger.Prefix.Length..]).Distinct())
+                        {
+                            <button class="button small" @onclick="() => AnswerHoliday(e, h)">Yes, @HolidayTagger.Name(h)</button>
+                        }
+                        <button class="button small secondary" @onclick='() => AnswerHoliday(e, "none")'>No, not a holiday episode</button>
+                    </div>
+                }
             </div>
             <div class="actions">
                 <button class="button" @onclick="() => Watch(e.Item.Path)">Watch</button>
@@ -135,6 +146,17 @@
                     <label>Season <input type="number" min="0" @bind="choice.Season" /></label>
                     <label>Episode <input type="number" min="0" @bind="choice.Episode" /></label>
                     <label>Episode title (optional) <input @bind="choice.EpisodeTitle" /></label>
+                }
+
+                @if (choice.Kind is MediaKind.Episode or MediaKind.Movie)
+                {
+                    <label>Holiday episode?
+                        <select @bind="choice.Holiday">
+                            <option value="">@(LibraryActions.GuessedHolidays(e) is { Length: > 0 } g ? $"Let the scan decide (it says: {g})" : "Let the scan decide (it says: not a holiday episode)")</option>
+                            <option value="none">No, not a holiday episode</option>
+                            @foreach (var h in HolidayTagger.Choices) { <option value="@h.Key">Yes: @h.Name</option> }
+                        </select>
+                    </label>
                 }
 
                 @if (choice.Kind == MediaKind.Commercial)
@@ -242,6 +264,14 @@
 
     private void Watch(string path) => notice = Opener.Open(path) ?? $"Opened {Path.GetFileName(path)} in your video player.";
     private void ShowInFolder(string path) => notice = Opener.ShowInFolder(path) ?? "Opened the folder.";
+
+    private async Task AnswerHoliday(CatalogEntry e, string holiday)
+    {
+        LabelChoice c = LibraryActions.ChoiceFor(e);
+        c.Holiday = holiday;
+        notice = Actions.Apply(e.Item.Id, c);
+        await OnChanged.InvokeAsync();
+    }
 
     private async Task Save(long id)
     {

@@ -9,7 +9,7 @@ namespace TickleTV.Scheduler.Core.Catalog;
 /// </summary>
 public sealed class CatalogDb : IDisposable
 {
-    private const int CurrentSchema = 2;
+    private const int CurrentSchema = 3;
     private readonly SqliteConnection _conn;
     private SqliteTransaction? _tx;
 
@@ -112,6 +112,10 @@ public sealed class CatalogDb : IDisposable
                     created_utc TEXT NOT NULL
                 );
                 """, tx);
+        }
+        if (version < 3)
+        {
+            Exec("ALTER TABLE episodes ADD COLUMN plot TEXT;", tx);
         }
         Exec("DELETE FROM schema_version; INSERT INTO schema_version(version) VALUES (@v);", tx, ("@v", CurrentSchema));
         tx.Commit();
@@ -219,24 +223,37 @@ public sealed class CatalogDb : IDisposable
         string? existingSource = Scalar<string?>("SELECT source FROM episodes WHERE item_id = @id", ("@id", itemId));
         if (existingSource == FactSource.Manual && info.Source != FactSource.Manual) return;
         Exec("""
-            INSERT INTO episodes (item_id, show, season, episode, air_date, episode_title, source)
-            VALUES (@id, @show, @s, @e, @d, @t, @src)
+            INSERT INTO episodes (item_id, show, season, episode, air_date, episode_title, plot, source)
+            VALUES (@id, @show, @s, @e, @d, @t, @p, @src)
             ON CONFLICT(item_id) DO UPDATE SET show = excluded.show, season = excluded.season, episode = excluded.episode,
-                air_date = excluded.air_date, episode_title = excluded.episode_title, source = excluded.source
+                air_date = excluded.air_date, episode_title = excluded.episode_title, plot = COALESCE(excluded.plot, episodes.plot), source = excluded.source
             """, null,
             ("@id", itemId), ("@show", info.Show), ("@s", info.Season), ("@e", info.Episode),
-            ("@d", info.AirDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), ("@t", info.EpisodeTitle), ("@src", info.Source));
+            ("@d", info.AirDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), ("@t", info.EpisodeTitle), ("@p", info.Plot), ("@src", info.Source));
     }
 
     public EpisodeInfo? GetEpisode(long itemId) =>
-        Query("SELECT show, season, episode, air_date, episode_title, source FROM episodes WHERE item_id = @id", ReadEpisode, ("@id", itemId)).FirstOrDefault();
+        Query("SELECT show, season, episode, air_date, episode_title, source, plot FROM episodes WHERE item_id = @id", ReadEpisode, ("@id", itemId)).FirstOrDefault();
 
     public IReadOnlyList<string> ListShows() =>
         Query("SELECT show FROM episodes GROUP BY show COLLATE NOCASE ORDER BY show COLLATE NOCASE", r => r.GetString(0));
 
-    /// <summary>One row per show: episode counts and the typical (average) episode length, present files only.</summary>
-    public IReadOnlyList<ShowSummary> ListShowSummaries() =>
-        Query("""
+    /// <summary>One row per show: episode counts, the typical (average) episode length, and holiday episodes, present files only.</summary>
+    public IReadOnlyList<ShowSummary> ListShowSummaries()
+    {
+        var holidays = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string show, string holiday, int n) in Query("""
+            SELECT e.show, substr(t.tag, 9), COUNT(*)
+            FROM tags t JOIN episodes e ON e.item_id = t.item_id JOIN media_items m ON m.id = e.item_id
+            WHERE t.tag LIKE 'holiday:%' AND m.missing_utc IS NULL
+              AND NOT EXISTS (SELECT 1 FROM tags n WHERE n.item_id = t.item_id AND n.tag = 'not-holiday')
+            GROUP BY e.show COLLATE NOCASE, substr(t.tag, 9)
+            """, r => (r.GetString(0), r.GetString(1), r.GetInt32(2))))
+        {
+            if (!holidays.TryGetValue(show, out var per)) holidays[show] = per = new Dictionary<string, int>();
+            per[holiday] = n;
+        }
+        return Query("""
             SELECT e.show, COUNT(*),
                    SUM(CASE WHEN (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) > 1 THEN 1 ELSE 0 END),
                    SUM(CASE WHEN e.air_date IS NOT NULL THEN 1 ELSE 0 END),
@@ -244,7 +261,24 @@ public sealed class CatalogDb : IDisposable
             FROM episodes e JOIN media_items m ON m.id = e.item_id
             WHERE m.missing_utc IS NULL
             GROUP BY e.show COLLATE NOCASE ORDER BY e.show COLLATE NOCASE
-            """, r => new ShowSummary(r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.IsDBNull(4) ? 0 : r.GetInt64(4)));
+            """, r => new ShowSummary(r.GetString(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.IsDBNull(4) ? 0 : r.GetInt64(4))
+            {
+                Holidays = holidays.TryGetValue(r.GetString(0), out var per) ? per : new Dictionary<string, int>(),
+            });
+    }
+
+    /// <summary>A show's episodes that carry a holiday tag, in broadcast order, skipping files marked not-holiday.</summary>
+    public IReadOnlyList<CatalogEntry> HolidayEpisodesOf(string show, string holiday)
+    {
+        var ids = Query("""
+            SELECT e.item_id FROM episodes e JOIN media_items m ON m.id = e.item_id
+            WHERE e.show = @show COLLATE NOCASE AND m.missing_utc IS NULL
+              AND EXISTS (SELECT 1 FROM tags t WHERE t.item_id = e.item_id AND t.tag = @tag)
+              AND NOT EXISTS (SELECT 1 FROM tags n WHERE n.item_id = e.item_id AND n.tag = 'not-holiday')
+            ORDER BY e.air_date IS NULL, e.air_date, e.season, e.episode, m.path
+            """, r => r.GetInt64(0), ("@show", show), ("@tag", HolidayTagger.TagFor(holiday)));
+        return ids.Select(id => GetEntry(id)!).ToList();
+    }
 
     /// <summary>The average episode length of a show in milliseconds, or null when it has no episodes.</summary>
     public long? AverageEpisodeMs(string show) =>
@@ -307,9 +341,15 @@ public sealed class CatalogDb : IDisposable
                  AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag = 'brand-not-needed') THEN 'NoBrand'
             WHEN m.kind = 'Commercial' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'category:%') THEN 'NoCategory'
             WHEN m.kind = 'Bumper' AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ('promo', 'station-id', 'break-card')) THEN 'BumperUnsorted'
+            WHEN m.kind IN ('Episode', 'Movie')
+                 AND EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag LIKE 'holiday:%' AND t.source <> 'manual')
+                 AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.source = 'manual' AND (t.tag LIKE 'holiday:%' OR t.tag = 'not-holiday')) THEN 'HolidayGuess'
             WHEN m.kind = 'Episode' AND (SELECT COUNT(*) FROM chapters c WHERE c.item_id = m.id) <= 1 THEN 'NoChapters'
         END
         """;
+
+    /// <summary>Reasons that are confirmations or notes rather than problems; they have their own filters and stay out of "All".</summary>
+    private const string SideReasons = "('NoChapters', 'HolidayGuess')";
 
     public IReadOnlyList<(CatalogEntry Entry, AttentionReason Reason)> ListNeedingAttention(AttentionReason? only = null, int limit = 200, int offset = 0)
     {
@@ -319,8 +359,8 @@ public sealed class CatalogDb : IDisposable
                 FROM media_items m LEFT JOIN episodes e ON e.item_id = m.id
                 WHERE m.missing_utc IS NULL
             )
-            WHERE reason IS NOT NULL AND ((@only IS NULL AND reason <> 'NoChapters') OR reason = @only)
-            ORDER BY CASE reason WHEN 'Unknown' THEN 0 WHEN 'EpisodeDetails' THEN 1 WHEN 'BumperUnsorted' THEN 2 WHEN 'NoCategory' THEN 3 WHEN 'NoBrand' THEN 4 ELSE 5 END, path
+            WHERE reason IS NOT NULL AND ((@only IS NULL AND reason NOT IN {SideReasons}) OR reason = @only)
+            ORDER BY CASE reason WHEN 'Unknown' THEN 0 WHEN 'EpisodeDetails' THEN 1 WHEN 'BumperUnsorted' THEN 2 WHEN 'NoCategory' THEN 3 WHEN 'NoBrand' THEN 4 WHEN 'HolidayGuess' THEN 5 ELSE 6 END, path
             LIMIT @limit OFFSET @offset
             """, r => (r.GetInt64(0), r.GetString(1)), ("@only", only?.ToString()), ("@limit", limit), ("@offset", offset));
         return rows.Select(r => (GetEntry(r.Item1)!, Enum.Parse<AttentionReason>(r.Item2))).ToList();
@@ -557,6 +597,7 @@ public sealed class CatalogDb : IDisposable
         AirDate = r.IsDBNull(3) ? null : DateOnly.ParseExact(r.GetString(3), "yyyy-MM-dd", CultureInfo.InvariantCulture),
         EpisodeTitle = r.IsDBNull(4) ? null : r.GetString(4),
         Source = r.GetString(5),
+        Plot = r.FieldCount > 6 && !r.IsDBNull(6) ? r.GetString(6) : null,
     };
 
     private static string? Str(SqliteDataReader r, string col)

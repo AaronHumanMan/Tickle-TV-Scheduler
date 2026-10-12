@@ -214,6 +214,7 @@ public sealed class ChannelBuilder
             programmes.Add(built.Programme with
             {
                 SubTitle = episode.Episode?.EpisodeTitle,
+                Description = episode.Episode?.Plot,
                 EpisodeNumber = episode.Episode is { Season: { } s, Episode: { } e } ? $"S{s:00}E{e:00}" : null,
             });
 

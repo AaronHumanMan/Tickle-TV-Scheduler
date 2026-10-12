@@ -14,6 +14,8 @@ public sealed record LabelChoice
     public bool BrandNotNeeded { get; set; }
     public string Category { get; set; } = "";
     public string ExtraLabels { get; set; } = "";
+    /// <summary>"" lets the scan decide; "none" means not a holiday episode; otherwise a holiday key such as christmas.</summary>
+    public string Holiday { get; set; } = "";
 }
 
 public sealed class LibraryActions
@@ -32,8 +34,14 @@ public sealed class LibraryActions
         Brand = e.Tags.FirstOrDefault(t => t.Name.StartsWith("brand:"))?.Name["brand:".Length..] ?? "",
         BrandNotNeeded = e.Tags.Any(t => t.Name == "brand-not-needed"),
         Category = e.Tags.FirstOrDefault(t => t.Name.StartsWith("category:"))?.Name["category:".Length..] ?? "",
-        ExtraLabels = string.Join(", ", e.Tags.Where(t => t.Source == FactSource.Manual && !t.Name.Contains(':') && t.Name != "brand-not-needed").Select(t => t.Name)),
+        ExtraLabels = string.Join(", ", e.Tags.Where(t => t.Source == FactSource.Manual && !t.Name.Contains(':') && t.Name != "brand-not-needed" && t.Name != HolidayTagger.NotHoliday).Select(t => t.Name)),
+        Holiday = e.Tags.Any(t => t.Source == FactSource.Manual && t.Name == HolidayTagger.NotHoliday) ? "none"
+            : e.Tags.FirstOrDefault(t => t.Source == FactSource.Manual && t.Name.StartsWith(HolidayTagger.Prefix))?.Name[HolidayTagger.Prefix.Length..] ?? "",
     };
+
+    /// <summary>The holiday tags the scan guessed for a file, as names: "Christmas Day, Halloween".</summary>
+    public static string GuessedHolidays(CatalogEntry e) =>
+        string.Join(", ", e.Tags.Where(t => t.Source != FactSource.Manual && t.Name.StartsWith(HolidayTagger.Prefix)).Select(t => HolidayTagger.Name(t.Name[HolidayTagger.Prefix.Length..])));
 
     /// <summary>Applies a person's choices. Returns a plain-language summary of what was saved.</summary>
     public string Apply(long itemId, LabelChoice c)
@@ -61,6 +69,7 @@ public sealed class LibraryActions
                     Episode = c.Episode,
                     EpisodeTitle = string.IsNullOrWhiteSpace(c.EpisodeTitle) ? null : c.EpisodeTitle.Trim(),
                     AirDate = current.Episode?.AirDate,
+                    Plot = current.Episode?.Plot,
                     Source = FactSource.Manual,
                 });
                 foreach (Tag t in current.Tags.Where(t => t.Name.StartsWith("show:"))) db.RemoveTag(itemId, t.Name);
@@ -88,6 +97,21 @@ public sealed class LibraryActions
                     db.AddCategory(c.Category);
                     db.AddTag(itemId, "category:" + CatalogDb.NormalizeTag(c.Category), FactSource.Manual);
                     saved.Add($"category {c.Category.Trim()}");
+                }
+            }
+
+            if (c.Kind is MediaKind.Episode or MediaKind.Movie && !string.IsNullOrEmpty(c.Holiday))
+            {
+                foreach (Tag t in current.Tags.Where(t => t.Name.StartsWith(HolidayTagger.Prefix) || t.Name == HolidayTagger.NotHoliday)) db.RemoveTag(itemId, t.Name);
+                if (c.Holiday == "none")
+                {
+                    db.AddTag(itemId, HolidayTagger.NotHoliday, FactSource.Manual);
+                    saved.Add("not a holiday episode");
+                }
+                else
+                {
+                    db.AddTag(itemId, HolidayTagger.TagFor(c.Holiday), FactSource.Manual);
+                    saved.Add($"{HolidayTagger.Name(c.Holiday)} episode");
                 }
             }
 
@@ -123,8 +147,24 @@ public sealed class LibraryActions
         AttentionReason.NoCategory => "This commercial has no category yet.",
         AttentionReason.BumperUnsorted => "This is in a bumper folder, but I can't tell if it's a station ID, a break card, or a promo for a show.",
         AttentionReason.NoChapters => "This episode has no chapter marks, so it will play straight through with commercials only at the end. Nothing to fix unless you want breaks inside it; adding chapter marks to the file does that.",
+        AttentionReason.HolidayGuess => "The scan thinks this is a holiday episode. Press Yes or No so holiday slots can trust it.",
         _ => "",
     };
+
+    /// <summary>"The scan thinks this is a Christmas Day episode, from its title." Null when there is no unconfirmed guess.</summary>
+    public static string? HolidayGuessText(CatalogEntry e)
+    {
+        var guesses = e.Tags.Where(t => t.Source != FactSource.Manual && t.Name.StartsWith(HolidayTagger.Prefix)).ToList();
+        if (guesses.Count == 0 || e.Tags.Any(t => t.Source == FactSource.Manual && (t.Name == HolidayTagger.NotHoliday || t.Name.StartsWith(HolidayTagger.Prefix)))) return null;
+        string names = string.Join(" and ", guesses.Select(t => HolidayTagger.Name(t.Name[HolidayTagger.Prefix.Length..])));
+        string because = guesses[0].Source switch
+        {
+            FactSource.Nfo => "from its description",
+            FactSource.AirDate => e.Episode?.AirDate is { } d ? $"only because it first aired on {d:MMMM d, yyyy}" : "from its air date",
+            _ => "from its title",
+        };
+        return $"The scan thinks this is a {names} episode, {because}. Is that right?";
+    }
 
     public static string ReasonTitle(AttentionReason reason) => reason switch
     {
@@ -134,6 +174,7 @@ public sealed class LibraryActions
         AttentionReason.NoCategory => "Commercials without a category",
         AttentionReason.BumperUnsorted => "Bumpers I couldn't sort",
         AttentionReason.NoChapters => "Episodes without chapter marks",
+        AttentionReason.HolidayGuess => "Holiday episodes to confirm",
         _ => reason.ToString(),
     };
 
@@ -160,6 +201,7 @@ public sealed class LibraryActions
                 BrandNotNeeded = c.BrandNotNeeded,
                 Category = c.Category,
                 ExtraLabels = c.ExtraLabels,
+                Holiday = c.Holiday,
             };
             Apply(id, per);
             done++;

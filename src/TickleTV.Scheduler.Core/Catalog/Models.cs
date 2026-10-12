@@ -20,6 +20,8 @@ public static class FactSource
     public const string Folder = "folder";
     /// <summary>A Kodi/Jellyfin/Plex-style .nfo sidecar next to the video, see <see cref="NfoSidecar"/>.</summary>
     public const string Nfo = "nfo";
+    /// <summary>A hint from the original air date alone, such as a holiday episode spotted by when it first aired.</summary>
+    public const string AirDate = "air-date";
     public const string Default = "default";
 }
 
@@ -50,6 +52,8 @@ public sealed record EpisodeInfo
     public int? Episode { get; init; }
     public DateOnly? AirDate { get; init; }
     public string? EpisodeTitle { get; init; }
+    /// <summary>The episode's description, from a .nfo sidecar. Shown in the guide and searched for holiday words.</summary>
+    public string? Plot { get; init; }
     public required string Source { get; init; }
 }
 
@@ -71,6 +75,8 @@ public sealed record CatalogEntry
 public sealed record ShowSummary(string Show, int Episodes, int WithChapters, int WithDates, long AvgDurationMs)
 {
     public int AvgMinutes => (int)((AvgDurationMs + 30_000) / 60_000);
+    /// <summary>Holiday episodes by holiday key: christmas => 4.</summary>
+    public IReadOnlyDictionary<string, int> Holidays { get; init; } = new Dictionary<string, int>();
 }
 
 public enum AttentionReason
@@ -87,4 +93,6 @@ public enum AttentionReason
     BumperUnsorted,
     /// <summary>An episode with no chapter marks, so breaks fall back to even spacing. Low priority; its own filter.</summary>
     NoChapters,
+    /// <summary>The scan thinks this is a holiday episode and nobody has confirmed or denied it. Its own filter.</summary>
+    HolidayGuess,
 }

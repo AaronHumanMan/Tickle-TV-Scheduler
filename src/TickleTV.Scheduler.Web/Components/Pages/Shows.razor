@@ -15,17 +15,20 @@
 else
 {
     <table class="table">
-        <thead><tr><th>Show</th><th>Episodes</th><th>Typical length</th><th>With chapter marks</th><th>With air dates</th></tr></thead>
+        <thead><tr><th>Show</th><th>Episodes</th><th>Typical length</th><th>With chapter marks</th><th>With air dates</th><th>Holiday episodes</th></tr></thead>
         <tbody>
         @foreach (var r in rows)
         {
-            <tr><td>@r.Show</td><td>@r.Episodes</td><td>@r.AvgMinutes min</td><td>@r.WithChapters</td><td>@r.WithDates</td></tr>
+            <tr><td>@r.Show</td><td>@r.Episodes</td><td>@r.AvgMinutes min</td><td>@r.WithChapters</td><td>@r.WithDates</td><td>@HolidayWords(r)</td></tr>
         }
         </tbody>
     </table>
 }
 
 @code {
+    private static string HolidayWords(ShowSummary r) => r.Holidays.Count == 0 ? "" :
+        string.Join(", ", r.Holidays.OrderByDescending(kv => kv.Value).Select(kv => $"{HolidayTagger.Name(kv.Key)} {kv.Value}"));
+
     private IReadOnlyList<ShowSummary> rows = [];
 
     protected override void OnInitialized()

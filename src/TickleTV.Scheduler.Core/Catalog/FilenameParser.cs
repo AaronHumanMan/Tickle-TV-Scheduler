@@ -15,6 +15,8 @@ public sealed record ParsedName
     public int? Episode { get; init; }
     public DateOnly? AirDate { get; init; }
     public string? EpisodeTitle { get; init; }
+    /// <summary>Description from a .nfo sidecar, when there is one.</summary>
+    public string? Plot { get; init; }
     /// <summary>Tags derived from the name and folders, such as brand:ross-perot, category:cars, psa, unbranded, 1990s.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 }

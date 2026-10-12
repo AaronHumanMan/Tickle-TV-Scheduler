@@ -11,7 +11,7 @@
 <p class="lead">These files were scanned, but I couldn't tell what they are or couldn't label them well. Click <strong>Watch</strong> to open a file in your video player, then <strong>Edit</strong> to say what it is. To label several similar files at once, tick their boxes and use the panel that appears. You can stop any time; nothing here is required.</p>
 
 <div class="filters">
-    <button class="chip @(filter is null ? "active" : "")" @onclick="() => SetFilter(null)">All (@counts.Where(kv => kv.Key != AttentionReason.NoChapters).Sum(kv => kv.Value))</button>
+    <button class="chip @(filter is null ? "active" : "")" @onclick="() => SetFilter(null)">All (@counts.Where(kv => kv.Key is not (AttentionReason.NoChapters or AttentionReason.HolidayGuess)).Sum(kv => kv.Value))</button>
     @foreach (var kv in counts.Where(kv => kv.Value > 0))
     {
         <button class="chip @(filter == kv.Key ? "active" : "")" @onclick="() => SetFilter(kv.Key)">@LibraryActions.ReasonTitle(kv.Key) (@kv.Value)</button>
