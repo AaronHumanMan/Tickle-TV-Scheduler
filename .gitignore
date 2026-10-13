@@ -9,3 +9,6 @@ publish/
 installer/publish/
 installer/dist/
 installer/tools/
+
+# Reference pictures (mock-ups, LCARS examples): kept out of the repo, history keeps the old ones
+images/
