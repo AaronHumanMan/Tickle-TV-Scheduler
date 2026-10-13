@@ -1,7 +1,9 @@
 @page "/"
 @using TickleTV.Scheduler.Core.Catalog
+@using TickleTV.Scheduler.Core.Config
 @using TickleTV.Scheduler.Web.Services
 @inject CatalogAccess Catalog
+@inject ConfigStore Config
 @inject JobRunner Jobs
 @inject NightlyBuilder Nightly
 @rendermode InteractiveServer
@@ -19,6 +21,18 @@
         <h2>Nothing scanned yet</h2>
         <p>Tickle TV hasn't looked at your videos yet. Go to <a href="scan">Scan</a>, add the folders where your shows and commercials live, and press Scan.</p>
         <a class="button primary" href="scan" data-sound="keyok">Go to Scan</a>
+    </div>
+    <div class="card @(lineupFound ? "ok" : "warn")">
+        <h2>Where is ErsatzTV?</h2>
+        @if (lineupFound)
+        {
+            <p>Tickle TV found ErsatzTV's lineup file, so finished schedules will go to the right place. If you ever move ErsatzTV, change the path on the <a href="settings">Settings</a> page.</p>
+        }
+        else
+        {
+            <p>Tickle TV hands finished schedules to ErsatzTV, and it hasn't found ErsatzTV's lineup file yet. You can keep going and scan first. Before you build, open <a href="settings">Settings</a> and point Tickle TV at ErsatzTV's <strong>lineup.json</strong>.</p>
+            <a class="button" href="settings" data-sound="keyok">Go to Settings</a>
+        }
     </div>
 }
 else
@@ -80,6 +94,15 @@ else
                 </div>
             }
 
+            @if (!lineupFound)
+            {
+                <div class="card warn">
+                    <h2>Tickle TV can't find ErsatzTV</h2>
+                    <p>There is no lineup file at the path Tickle TV has for ErsatzTV, so a build has nowhere to go. Open <a href="settings">Settings</a> to check the path. If ErsatzTV has never run on this computer, start it once so it creates the file.</p>
+                    <a class="button" href="settings" data-sound="keyok">Go to Settings</a>
+                </div>
+            }
+
             @if (Nightly.Record is { Failed: true, FinishedAt: not null } failedBuild)
             {
                 <div class="card warn">
@@ -124,11 +147,24 @@ else
     private IReadOnlyDictionary<MediaKind, int> counts = new Dictionary<MediaKind, int>();
     private IReadOnlyList<ShowSummary> shows = [];
     private int attention;
+    private bool lineupFound;
 
     protected override void OnInitialized()
     {
         Jobs.Changed += () => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
+        CheckLineup();
         Refresh();
+    }
+
+    /// <summary>Is ErsatzTV's lineup file where the settings say? Quietly treats an unreadable settings file as "not found" so the Home page still loads.</summary>
+    private void CheckLineup()
+    {
+        try
+        {
+            SchedulerConfig cfg = Config.LoadLoose();
+            lineupFound = File.Exists(cfg.ResolvePath(cfg.Next.Lineup));
+        }
+        catch { lineupFound = false; }
     }
 
     private void Refresh()
