@@ -40,14 +40,22 @@ public sealed class JobRunner
 
     private void Notify() => Changed?.Invoke();
 
+    private DateTimeOffset _lastLogNotify = DateTimeOffset.MinValue;
+
     private void AddLog(JobState job, string line)
     {
+        bool tell;
         lock (job.Log)
         {
             job.Log.Add(line);
             if (job.Log.Count > 400) job.Log.RemoveRange(0, job.Log.Count - 400);
+            // A scan logs a line per file, tens of thousands in a big library. Pages re-read the catalog on every
+            // change notice, so pass these on a few times a second at most; Finish sends the last one regardless.
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            tell = now - _lastLogNotify >= TimeSpan.FromMilliseconds(400);
+            if (tell) _lastLogNotify = now;
         }
-        Notify();
+        if (tell) Notify();
     }
 
     public JobState StartScan(IReadOnlyList<string> roots)

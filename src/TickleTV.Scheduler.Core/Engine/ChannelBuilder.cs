@@ -247,6 +247,7 @@ public sealed class ChannelBuilder
                 PaddingPolicy = paddingPolicy,
                 SlotEnd = slotEndOverride,
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
+                Random = _random,
                 Bumpers = bumperSet,
                 Filler = gapFiller,
             };
@@ -421,7 +422,7 @@ public sealed class ChannelBuilder
             .Where(e => !OnCooldown(e.Item.Id, start, cooldown, recentPlays))
             .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
             .ToList();
-        (var gapItems, var gapWarnings) = SpikeBuilder.FillGap(start, durationMs, clips, bumpers, filler, _channel.Ads.MaxRepeatsPerBreak);
+        (var gapItems, var gapWarnings) = SpikeBuilder.FillGap(start, durationMs, clips, bumpers, filler, _channel.Ads.MaxRepeatsPerBreak, _random);
         warnings.AddRange(gapWarnings.Select(w => $"{start:ddd HH:mm} station break: {w}"));
 
         foreach (PlayoutItem item in gapItems)

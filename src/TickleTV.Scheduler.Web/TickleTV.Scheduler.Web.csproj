@@ -16,6 +16,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <!-- One person, one tray app: workstation garbage collection and conserve-memory keep the working set small,
+         where the web-server default (server GC) happily holds gigabytes of freed memory in reserve. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
     <Version>0.1.1</Version>
     <Product>Tickle TV Scheduler</Product>
     <AssemblyTitle>Tickle TV Scheduler</AssemblyTitle>

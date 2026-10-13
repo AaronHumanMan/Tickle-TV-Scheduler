@@ -1,3 +1,5 @@
+using System.Collections;
+
 namespace TickleTV.Scheduler.Core.Engine;
 
 /// <summary>
@@ -21,6 +23,16 @@ public sealed class BreakFiller
     /// </summary>
     public long MinSlateMs { get; init; } = 2_000;
 
+    /// <summary>
+    /// How many different clips one break considers. The knapsack table grows with clips times budget, so handing
+    /// it a whole library of twenty thousand commercials cost gigabytes per break; a few hundred of the least-played
+    /// clips, chosen at random among equals, fill a break just as exactly.
+    /// </summary>
+    public int MaxCandidates { get; init; } = 300;
+
+    /// <summary>Decides which clips make the cut when there are more than <see cref="MaxCandidates"/>. Null uses the shared random source.</summary>
+    public Random? Random { get; init; }
+
     private readonly IReadOnlyList<FillerClip> _clips;
     private readonly Dictionary<string, int> _plays = new();
 
@@ -43,16 +55,30 @@ public sealed class BreakFiller
         return new FillResult(ordered, budgetMs - used);
     }
 
+    /// <summary>The clips this break may draw on: all of them, or the least-played <see cref="MaxCandidates"/> with ties broken at random.</summary>
+    private IReadOnlyList<FillerClip> Pool()
+    {
+        if (_clips.Count <= MaxCandidates) return _clips;
+        Random rng = Random ?? System.Random.Shared;
+        return _clips
+            .Select(c => (clip: c, plays: _plays.GetValueOrDefault(c.Path), key: rng.Next()))
+            .OrderBy(t => t.plays).ThenBy(t => t.key)
+            .Take(MaxCandidates)
+            .Select(t => t.clip)
+            .ToList();
+    }
+
     /// <summary>
     /// 0/1 knapsack over an expanded item list (one entry per allowed repeat), maximizing filled time.
     /// Among fills with the same leftover, the lowest cost wins: cost grows with prior plays and with
-    /// repeats inside this break, so rotation spreads across the library.
+    /// repeats inside this break, so rotation spreads across the library. Only the previous row of costs is
+    /// kept; the choices are kept as one bit per cell so the exact pick can be read back.
     /// </summary>
     private List<FillerClip> Knapsack(long budgetMs)
     {
         int units = (int)(budgetMs / ResolutionMs);
         var items = new List<(FillerClip clip, int size, long cost)>();
-        foreach (FillerClip clip in _clips)
+        foreach (FillerClip clip in Pool())
         {
             int size = (int)((clip.DurationMs + ResolutionMs - 1) / ResolutionMs); // round up: never overshoot
             if (size <= 0 || size > units) continue;
@@ -66,40 +92,45 @@ public sealed class BreakFiller
         }
         if (items.Count == 0) return [];
 
-        // Full table so reconstruction is exact: take[i, u] = item i used to reach u from the first i items.
         int n = items.Count;
-        var reachable = new bool[n + 1, units + 1];
-        var cost = new long[n + 1, units + 1];
-        var take = new bool[n + 1, units + 1];
-        reachable[0, 0] = true;
+        int width = units + 1;
+        var reachPrev = new bool[width];
+        var reachCur = new bool[width];
+        var costPrev = new long[width];
+        var costCur = new long[width];
+        // take[i * width + u]: item i was used to reach u from the first i items.
+        var take = new BitArray((n + 1) * width);
+        reachPrev[0] = true;
 
         for (int i = 1; i <= n; i++)
         {
             (_, int size, long itemCost) = items[i - 1];
-            for (int u = 0; u <= units; u++)
+            int row = i * width;
+            for (int u = 0; u < width; u++)
             {
-                if (reachable[i - 1, u])
+                bool reached = reachPrev[u];
+                long best = reached ? costPrev[u] : 0;
+                if (u >= size && reachPrev[u - size])
                 {
-                    reachable[i, u] = true;
-                    cost[i, u] = cost[i - 1, u];
-                }
-                if (u >= size && reachable[i - 1, u - size])
-                {
-                    long candidate = cost[i - 1, u - size] + itemCost;
-                    if (!reachable[i, u] || candidate < cost[i, u])
+                    long candidate = costPrev[u - size] + itemCost;
+                    if (!reached || candidate < best)
                     {
-                        reachable[i, u] = true;
-                        cost[i, u] = candidate;
-                        take[i, u] = true;
+                        reached = true;
+                        best = candidate;
+                        take[row + u] = true;
                     }
                 }
+                reachCur[u] = reached;
+                costCur[u] = best;
             }
+            (reachPrev, reachCur) = (reachCur, reachPrev);
+            (costPrev, costCur) = (costCur, costPrev);
         }
 
         for (int target = units; target >= 0; target--)
         {
-            if (!reachable[n, target]) continue;
-            List<FillerClip> picks = Reconstruct(items, take, n, target);
+            if (!reachPrev[target]) continue;
+            List<FillerClip> picks = Reconstruct(items, take, width, n, target);
             long leftover = budgetMs - picks.Sum(c => c.DurationMs);
             if (leftover == 0 || leftover >= MinSlateMs) return picks;
             // A sliver of slate would make ffmpeg fail; try the next fuller-but-roomier target.
@@ -107,12 +138,12 @@ public sealed class BreakFiller
         return [];
     }
 
-    private static List<FillerClip> Reconstruct(List<(FillerClip clip, int size, long cost)> items, bool[,] take, int n, int target)
+    private static List<FillerClip> Reconstruct(List<(FillerClip clip, int size, long cost)> items, BitArray take, int width, int n, int target)
     {
         var picks = new List<FillerClip>();
         for (int i = n, u = target; i > 0 && u > 0; i--)
         {
-            if (!take[i, u]) continue;
+            if (!take[i * width + u]) continue;
             picks.Add(items[i - 1].clip);
             u -= items[i - 1].size;
         }

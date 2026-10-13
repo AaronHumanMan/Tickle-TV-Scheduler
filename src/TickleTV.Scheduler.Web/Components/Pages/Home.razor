@@ -6,6 +6,7 @@
 @inject ConfigStore Config
 @inject JobRunner Jobs
 @inject NightlyBuilder Nightly
+@implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Tickle TV</PageTitle>
@@ -151,10 +152,15 @@ else
 
     protected override void OnInitialized()
     {
-        Jobs.Changed += () => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
+        Jobs.Changed += OnJobChanged;
         CheckLineup();
         Refresh();
     }
+
+    private void OnJobChanged() => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
+
+    /// <summary>Lets go of the job runner's event, or every visit to this page would stay in memory for as long as the app runs.</summary>
+    public void Dispose() => Jobs.Changed -= OnJobChanged;
 
     /// <summary>Is ErsatzTV's lineup file where the settings say? Quietly treats an unreadable settings file as "not found" so the Home page still loads.</summary>
     private void CheckLineup()
