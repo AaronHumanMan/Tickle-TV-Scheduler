@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <!-- 0 to 9: how hard the GC works to give memory back. 5 trades a little CPU for a smaller idle footprint. -->
@@ -25,7 +25,7 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Product>Tickle TV Scheduler</Product>
     <AssemblyTitle>Tickle TV Scheduler</AssemblyTitle>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
