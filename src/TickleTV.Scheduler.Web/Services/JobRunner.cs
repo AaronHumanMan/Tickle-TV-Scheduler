@@ -80,7 +80,8 @@ public sealed class JobRunner
                     job.Summary = $"Added {report.Added}, updated {report.Updated}, moved {report.Moved}, unchanged {report.Unchanged}, missing {report.Missing}."
                                   + (report.WithSidecar > 0 ? $" {report.WithSidecar} took their details from .nfo files." : anySidecar ? "" : " No .nfo details files were found next to your videos (see Help: How files get sorted).")
                                   + (report.Unclassified.Count > 0 ? $" {report.Unclassified.Count} need attention." : "")
-                                  + (report.Errors.Count > 0 ? $" {report.Errors.Count} problems." : "");
+                                  + (report.UnreachableRoots.Count > 0 ? $" Couldn't open {Folders(report.UnreachableRoots)}: if that is a network share or an external drive, check it is on and connected, then scan again. Its files were left as they were." : "")
+                                  + (report.Errors.Count > report.UnreachableRoots.Count ? $" {report.Errors.Count - report.UnreachableRoots.Count} problems." : "");
                 }
                 catch (Exception ex)
                 {
@@ -134,6 +135,8 @@ public sealed class JobRunner
             return job;
         }
     }
+
+    private static string Folders(IReadOnlyList<string> roots) => roots.Count == 1 ? roots[0] : $"{roots.Count} folders ({string.Join("; ", roots)})";
 
     private void Finish(JobState job)
     {

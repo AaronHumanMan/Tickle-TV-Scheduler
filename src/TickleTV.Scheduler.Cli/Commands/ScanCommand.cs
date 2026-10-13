@@ -33,6 +33,7 @@ public static class ScanCommand
                 foreach (string f in r.Unclassified) Console.WriteLine($"  {f}");
             }
             foreach (string e in r.Errors) Console.WriteLine($"ERROR: {e}");
+            if (r.UnreachableRoots.Count > 0) Console.WriteLine("Files under folders that couldn't be opened were left as they were, not marked missing.");
             return r.Errors.Count > 0 ? 1 : 0;
         });
         return cmd;

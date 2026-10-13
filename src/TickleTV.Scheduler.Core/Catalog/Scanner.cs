@@ -21,6 +21,8 @@ public sealed record ScanReport
     public int WithSidecar { get; init; }
     public IReadOnlyList<string> Unclassified { get; init; } = [];
     public IReadOnlyList<string> Errors { get; init; } = [];
+    /// <summary>Media roots that could not be opened this time (a network share that is off, an unplugged drive). Their files were left exactly as they were, not marked missing.</summary>
+    public IReadOnlyList<string> UnreachableRoots { get; init; } = [];
 }
 
 /// <summary>
@@ -51,16 +53,21 @@ public sealed class Scanner
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
-        // Enumerate first so progress can show "x of y".
+        // Enumerate first so progress can show "x of y". A root that cannot be opened (a share that is off) is
+        // skipped entirely: its files are neither probed nor marked missing, so one bad night does not empty the channel.
         var files = new List<string>();
+        var reachable = new List<string>();
+        var unreachable = new List<string>();
         foreach (string root in roots)
         {
             string fullRoot = Path.GetFullPath(root);
             if (!Directory.Exists(fullRoot))
             {
-                errors.Add($"Root not found: {fullRoot}");
+                unreachable.Add(fullRoot);
+                errors.Add($"Couldn't open the folder {fullRoot}. If it is on another computer or an external drive, check that it is on and connected. Its files were left as they were.");
                 continue;
             }
+            reachable.Add(fullRoot);
             files.AddRange(Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories)
                 .Where(f => Extensions.Contains(Path.GetExtension(f).ToLowerInvariant())));
         }
@@ -153,7 +160,7 @@ public sealed class Scanner
         }
 
         int missing = 0;
-        foreach (MediaItem item in _db.ListUnderRoots(roots))
+        foreach (MediaItem item in _db.ListUnderRoots(reachable))
         {
             if (seen.Contains(item.Path) || File.Exists(item.Path)) continue;
             if (item.MissingUtc is null)
@@ -167,7 +174,7 @@ public sealed class Scanner
         return new ScanReport
         {
             Added = added, Updated = updated, Moved = moved, Unchanged = unchanged, Missing = missing, WithSidecar = withSidecar,
-            Unclassified = unclassified, Errors = errors,
+            Unclassified = unclassified, Errors = errors, UnreachableRoots = unreachable,
         };
     }
 
