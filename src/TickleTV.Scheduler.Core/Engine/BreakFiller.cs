@@ -33,6 +33,12 @@ public sealed class BreakFiller
     /// <summary>Decides which clips make the cut when there are more than <see cref="MaxCandidates"/>. Null uses the shared random source.</summary>
     public Random? Random { get; init; }
 
+    /// <summary>
+    /// Paths of clips to favour (a holiday's commercials in its week). About half of each break is filled from
+    /// these first, as exactly as they allow; the rest of the break comes from everything else.
+    /// </summary>
+    public IReadOnlySet<string>? Preferred { get; init; }
+
     private readonly IReadOnlyList<FillerClip> _clips;
     private readonly Dictionary<string, int> _plays = new();
 
@@ -47,7 +53,19 @@ public sealed class BreakFiller
     {
         if (budgetMs <= 0 || _clips.Count == 0) return new FillResult([], budgetMs);
 
-        List<FillerClip> chosen = Knapsack(budgetMs);
+        var chosen = new List<FillerClip>();
+        long remaining = budgetMs;
+        if (Preferred is { Count: > 0 } && _clips.Any(IsPreferred))
+        {
+            // First half from the favourites, then the rest of the break from everything that is left.
+            long half = budgetMs / 2 / ResolutionMs * ResolutionMs;
+            List<FillerClip> seasonal = Knapsack(half, _clips.Where(IsPreferred).ToList());
+            chosen.AddRange(seasonal);
+            remaining -= seasonal.Sum(c => c.DurationMs);
+            var taken = seasonal.Select(c => c.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            chosen.AddRange(Knapsack(remaining, _clips.Where(c => !taken.Contains(c.Path)).ToList()));
+        }
+        else chosen.AddRange(Knapsack(budgetMs, _clips));
         List<FillerClip> ordered = Arrange(chosen);
         long used = ordered.Sum(c => c.DurationMs);
         foreach (FillerClip c in ordered)
@@ -55,12 +73,12 @@ public sealed class BreakFiller
         return new FillResult(ordered, budgetMs - used);
     }
 
-    /// <summary>The clips this break may draw on: all of them, or the least-played <see cref="MaxCandidates"/> with ties broken at random.</summary>
-    private IReadOnlyList<FillerClip> Pool()
+    /// <summary>The clips a fill may draw on: all of them, or the least-played <see cref="MaxCandidates"/> with ties broken at random.</summary>
+    private IReadOnlyList<FillerClip> Pool(IReadOnlyList<FillerClip> clips)
     {
-        if (_clips.Count <= MaxCandidates) return _clips;
+        if (clips.Count <= MaxCandidates) return clips;
         Random rng = Random ?? System.Random.Shared;
-        return _clips
+        return clips
             .Select(c => (clip: c, plays: _plays.GetValueOrDefault(c.Path), key: rng.Next()))
             .OrderBy(t => t.plays).ThenBy(t => t.key)
             .Take(MaxCandidates)
@@ -68,17 +86,20 @@ public sealed class BreakFiller
             .ToList();
     }
 
+    private bool IsPreferred(FillerClip clip) => Preferred is not null && Preferred.Contains(clip.Path);
+
     /// <summary>
     /// 0/1 knapsack over an expanded item list (one entry per allowed repeat), maximizing filled time.
     /// Among fills with the same leftover, the lowest cost wins: cost grows with prior plays and with
     /// repeats inside this break, so rotation spreads across the library. Only the previous row of costs is
     /// kept; the choices are kept as one bit per cell so the exact pick can be read back.
     /// </summary>
-    private List<FillerClip> Knapsack(long budgetMs)
+    private List<FillerClip> Knapsack(long budgetMs, IReadOnlyList<FillerClip> clips)
     {
         int units = (int)(budgetMs / ResolutionMs);
+        if (units <= 0 || clips.Count == 0) return [];
         var items = new List<(FillerClip clip, int size, long cost)>();
-        foreach (FillerClip clip in Pool())
+        foreach (FillerClip clip in Pool(clips))
         {
             int size = (int)((clip.DurationMs + ResolutionMs - 1) / ResolutionMs); // round up: never overshoot
             if (size <= 0 || size > units) continue;

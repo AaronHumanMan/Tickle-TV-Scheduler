@@ -271,6 +271,21 @@ else
                                 </div>
                                 @if (EraCountWords(slot) is { } ew) { <p class="block-note">@ew</p> }
                             }
+                            <label class="turns">Holiday commercials:
+                                <select value="@HolidayAdsOf(slot)" @onchange="e => SetHolidayAds(slot, e.Value?.ToString())">
+                                    <option value="none">No holiday rule</option>
+                                    <option value="mix">Mix them in (about half of each break)</option>
+                                    <option value="only">Holiday commercials only</option>
+                                </select>
+                                @if (HolidayAdsOf(slot) != "none")
+                                {
+                                    <select value="@(slot.Ads!.Holiday ?? SlotAdsConfig.CalendarHoliday)" @onchange="e => SetHolidayAdsKey(slot, e.Value?.ToString())">
+                                        <option value="@SlotAdsConfig.CalendarHoliday">Whatever holiday the Calendar gives the day</option>
+                                        @foreach (var h in HolidayTagger.Choices) { <option value="@h.Key">@h.Name</option> }
+                                    </select>
+                                }
+                            </label>
+                            @if (HolidayAdsWords(ch, slot) is { } hw) { <p class="block-note">@hw</p> }
                             @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
                         </td>
                         <td>
@@ -376,7 +391,61 @@ else
             categories = Catalog.Run(db => db.ListCategories());
             noCategory = Catalog.Run(db => db.CountCommercials([AdRules.NoCategory], []));
             decades = Catalog.Run(db => db.ListDecades());
+            holidayAdCounts = Catalog.Run(db => db.CountHolidayCommercials());
         }
+    }
+
+    // ----- Holiday commercials per slot
+
+    private IReadOnlyDictionary<string, int> holidayAdCounts = new Dictionary<string, int>();
+
+    private static string HolidayAdsOf(SlotConfig slot) => slot.Ads?.HolidayAdsMode switch
+    {
+        HolidayAdsMode.Mix => "mix",
+        HolidayAdsMode.Only => "only",
+        _ => "none",
+    };
+
+    private void SetHolidayAds(SlotConfig slot, string? mode)
+    {
+        slot.Ads ??= new SlotAdsConfig();
+        if (mode is "mix" or "only")
+        {
+            slot.Ads.Holiday ??= SlotAdsConfig.CalendarHoliday;
+            slot.Ads.HolidayAds = mode;
+        }
+        else
+        {
+            slot.Ads.Holiday = null;
+            slot.Ads.HolidayAds = null;
+        }
+        TidyAds(slot);
+    }
+
+    private static void SetHolidayAdsKey(SlotConfig slot, string? key)
+    {
+        if (slot.Ads is null) return;
+        slot.Ads.Holiday = string.IsNullOrWhiteSpace(key) ? SlotAdsConfig.CalendarHoliday : key;
+    }
+
+    /// <summary>What the holiday rule will do with this catalog and this channel's calendar, in plain words.</summary>
+    private string? HolidayAdsWords(ChannelConfig ch, SlotConfig slot)
+    {
+        if (slot.Ads is null || slot.Ads.HolidayAdsMode == HolidayAdsMode.None || !Catalog.CatalogExists) return null;
+        bool only = slot.Ads.HolidayAdsMode == HolidayAdsMode.Only;
+        string Tagged(string key) => holidayAdCounts.TryGetValue(key, out int n) ? n.ToString("N0") : "0";
+        if (slot.Ads.Holiday == SlotAdsConfig.CalendarHoliday)
+        {
+            var rules = ch.Calendar.Where(r => r.Kind == RuleKind.Holiday && r.Holiday is not null).Select(r => HolidayTagger.Fold(r.Holiday!)).Distinct().ToList();
+            if (rules.Count == 0) return "This channel's Calendar has no holiday rules yet, so this does nothing until you add one there. On any other day the slot plays its usual commercials.";
+            string counts = string.Join(", ", rules.Select(k => $"{HolidayTagger.Name(k)} {Tagged(k)}"));
+            return $"On the days the Calendar gives to a holiday, that holiday's commercials {(only ? "are all that air" : "fill about half of each break")}; other days are normal. Tagged commercials: {counts}.";
+        }
+        string name = HolidayTagger.Name(slot.Ads.Holiday!);
+        int have = holidayAdCounts.GetValueOrDefault(slot.Ads.Holiday!);
+        if (have == 0) return $"No commercial is tagged {name} yet, so this slot plays its usual commercials. The scan tags them from words in the file name; you can also label them on the Library page.";
+        if (only && have < AdRules.SmallPool) return $"Only {have} {name} commercial{(have == 1 ? "" : "s")} are tagged. They will repeat a lot, and breaks fall back to other commercials when they run out.";
+        return $"{have:N0} {name} commercials are tagged and {(only ? "nothing else airs in this slot while they last" : "about half of each break comes from them")}.";
     }
 
     // ----- Commercial categories per slot

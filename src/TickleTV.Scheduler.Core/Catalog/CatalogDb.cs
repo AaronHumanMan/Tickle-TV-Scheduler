@@ -524,6 +524,14 @@ public sealed class CatalogDb : IDisposable
         return (int)Scalar<long>($"SELECT COUNT(*) FROM media_items m WHERE {string.Join(" AND ", where)}", args.ToArray());
     }
 
+    /// <summary>How many present commercials carry each holiday tag, by holiday key: {"christmas": 270, "halloween": 35}.</summary>
+    public IReadOnlyDictionary<string, int> CountHolidayCommercials() =>
+        Query("""
+            SELECT substr(t.tag, 9), COUNT(*) FROM tags t JOIN media_items m ON m.id = t.item_id
+            WHERE m.kind = 'Commercial' AND m.missing_utc IS NULL AND t.tag LIKE 'holiday:%'
+            GROUP BY t.tag ORDER BY 2 DESC
+            """, r => (Key: r.GetString(0), Count: r.GetInt32(1))).ToDictionary(x => x.Key, x => x.Count, StringComparer.Ordinal);
+
     /// <summary>Matches a decade tag such as "1990s" and nothing else.</summary>
     private const string DecadeGlob = "[0-9][0-9][0-9][0-9]s";
 

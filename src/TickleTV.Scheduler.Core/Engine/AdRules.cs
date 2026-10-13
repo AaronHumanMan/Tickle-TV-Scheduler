@@ -20,9 +20,27 @@ public sealed class SlotAdsConfig
     public int? EraWithin { get; set; }
     /// <summary>For <c>era: decades</c>, the decades allowed: "1980s", "1990s".</summary>
     public List<string> Decades { get; set; } = [];
+    /// <summary>
+    /// Which holiday's commercials this slot favours: a holiday key (christmas, halloween, ...) or <c>calendar</c>
+    /// for whatever holiday the channel's calendar gives the day. Null means no holiday rule.
+    /// </summary>
+    public string? Holiday { get; set; }
+    /// <summary><c>mix</c> (about half of each break when there are enough) or <c>only</c> (nothing else, falling back when they run short). Default mix when <see cref="Holiday"/> is set.</summary>
+    public string? HolidayAds { get; set; }
+
+    /// <summary>The <see cref="Holiday"/> value that means "follow the Calendar page".</summary>
+    public const string CalendarHoliday = "calendar";
 
     [YamlIgnore]
-    public bool IsEmpty => Only.Count == 0 && Never.Count == 0 && EraMode == EraMode.Any;
+    public bool IsEmpty => Only.Count == 0 && Never.Count == 0 && EraMode == EraMode.Any && HolidayAdsMode == HolidayAdsMode.None;
+
+    [YamlIgnore]
+    public HolidayAdsMode HolidayAdsMode => string.IsNullOrWhiteSpace(Holiday) ? HolidayAdsMode.None : (HolidayAds ?? "").Trim().ToLowerInvariant() switch
+    {
+        "" or "mix" or "prefer" => HolidayAdsMode.Mix,
+        "only" => HolidayAdsMode.Only,
+        _ => throw new InvalidDataException($"Unknown holiday_ads '{HolidayAds}'. Use mix or only."),
+    };
 
     [YamlIgnore]
     public EraMode EraMode => (Era ?? "").Trim().ToLowerInvariant() switch
@@ -42,6 +60,22 @@ public sealed class SlotAdsConfig
         Only = AdRules.CleanSlugs(Only);
         Never = AdRules.CleanSlugs(Never);
         Decades = Decades.Select(AdRules.DecadeTag).OfType<string>().Distinct(StringComparer.Ordinal).OrderBy(d => d, StringComparer.Ordinal).ToList();
+        switch (HolidayAdsMode)
+        {
+            case HolidayAdsMode.None:
+                Holiday = null;
+                HolidayAds = null;
+                break;
+            default:
+                Holiday = Holiday!.Trim().ToLowerInvariant();
+                if (Holiday != CalendarHoliday)
+                {
+                    Holiday = HolidayTagger.Fold(Holiday);
+                    if (Holidays.Find(Holiday) is null) throw new InvalidDataException($"Unknown holiday '{Holiday}' in ads. Known: {string.Join(", ", HolidayTagger.Choices.Select(h => h.Key))}, or calendar.");
+                }
+                HolidayAds = HolidayAdsMode == HolidayAdsMode.Only ? "only" : null;
+                break;
+        }
         switch (EraMode)
         {
             case EraMode.Show:
@@ -65,6 +99,9 @@ public sealed class SlotAdsConfig
 
 /// <summary>How a slot limits its commercials by year.</summary>
 public enum EraMode { Any, Show, Decades }
+
+/// <summary>How a slot favours a holiday's commercials: not at all, mixed in, or nothing else.</summary>
+public enum HolidayAdsMode { None, Mix, Only }
 
 /// <summary>Applies the channel's and a slot's category and year rules to commercials.</summary>
 public static class AdRules
@@ -152,6 +189,16 @@ public static class AdRules
         return span.Lo <= r + slot.EraSpan && span.Hi >= r - slot.EraSpan;
     }
 
+    /// <summary>The tag a holiday's commercials carry: "holiday:christmas".</summary>
+    public static string HolidayTag(string holidayKey) => "holiday:" + HolidayTagger.Fold(holidayKey.Trim().ToLowerInvariant());
+
+    /// <summary>Is this clip tagged for the holiday?</summary>
+    public static bool IsHolidayAd(CatalogEntry entry, string holidayKey)
+    {
+        string tag = HolidayTag(holidayKey);
+        return entry.Tags.Any(t => t.Name == tag);
+    }
+
     /// <summary>"80s", "1980s" or "1980" to the tag "1980s"; null when the text isn't a decade.</summary>
     public static string? DecadeTag(string text)
     {
@@ -174,7 +221,16 @@ public static class AdRules
         if (slot.Only.Count > 0) parts.Add("only " + string.Join(", ", slot.Only.Select(name)));
         if (slot.Never.Count > 0) parts.Add("never " + string.Join(", ", slot.Never.Select(name)));
         if (EraWords(slot) is { } era) parts.Add(era);
+        if (HolidayAdsWords(slot) is { } holiday) parts.Add(holiday);
         return string.Join("; ", parts);
+    }
+
+    /// <summary>The slot's holiday rule in words, or null when it has none.</summary>
+    public static string? HolidayAdsWords(SlotAdsConfig slot)
+    {
+        if (slot.HolidayAdsMode == HolidayAdsMode.None || slot.Holiday is null) return null;
+        string what = slot.Holiday == SlotAdsConfig.CalendarHoliday ? "the day's holiday" : HolidayTagger.Name(slot.Holiday);
+        return slot.HolidayAdsMode == HolidayAdsMode.Only ? $"only {what} commercials" : $"{what} commercials mixed in";
     }
 
     /// <summary>The slot's year rule in words, or null when it takes any year.</summary>

@@ -147,7 +147,15 @@ public sealed class ChannelBuilder
             if (show is null)
             {
                 var gapClips = gapLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads)).ToList();
-                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapClips, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Label);
+                (HolidayAdsMode gapHolidayMode, string? gapHoliday) = HolidayAdsFor(slot, cursor);
+                HashSet<string>? gapPreferred = null;
+                if (gapHoliday is not null)
+                {
+                    var tagged = gapClips.Where(e => AdRules.IsHolidayAd(e, gapHoliday)).ToList();
+                    if (gapHolidayMode == HolidayAdsMode.Only && tagged.Count >= AdRules.FallbackBelow) gapClips = tagged;
+                    else if (gapHolidayMode == HolidayAdsMode.Mix) gapPreferred = tagged.Select(e => e.Item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+                cursor = EmitStationBreak(items, programmes, plays, warnings, cursor, untilNextMs, gapClips, bumperSet, gapFiller, recentPlays, cooldown, ref idCounter, slot.Label, gapPreferred);
                 continue;
             }
 
@@ -187,7 +195,28 @@ public sealed class ChannelBuilder
                 }
                 else eraLibrary = strictLibrary.Where(e => AdRules.InShowEra(e, eraRule, episodeYear)).ToList();
             }
-            List<FillerClip> ads = Candidates(pool, eraLibrary, ctx, cursor, cooldown, recentPlays);
+            // Holiday rule: "only" narrows the library to the holiday's commercials (falling back when they run short);
+            // "mix" hands them to the break filler as favourites, so about half of each break is seasonal.
+            (HolidayAdsMode holidayMode, string? holidayKey) = HolidayAdsFor(slot, cursor);
+            HashSet<string>? preferredAds = null;
+            List<CatalogEntry> holidayLibrary = eraLibrary;
+            if (holidayKey is not null)
+            {
+                var tagged = eraLibrary.Where(e => AdRules.IsHolidayAd(e, holidayKey)).ToList();
+                if (holidayMode == HolidayAdsMode.Only) holidayLibrary = tagged;
+                else preferredAds = tagged.Select(e => e.Item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            List<FillerClip> ads = Candidates(pool, holidayLibrary, ctx, cursor, cooldown, recentPlays);
+            if (ads.Count < AdRules.FallbackBelow && !ReferenceEquals(holidayLibrary, eraLibrary))
+            {
+                // Too few of the holiday's commercials are free: let the slot's other commercials in.
+                List<FillerClip> fallback = Candidates(pool, eraLibrary, ctx, cursor, cooldown, recentPlays);
+                if (fallback.Count > ads.Count)
+                {
+                    warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} {HolidayTagger.Name(holidayKey!)} commercials were free, so other commercials may air in its breaks.");
+                    ads = fallback;
+                }
+            }
             if (ads.Count < AdRules.FallbackBelow && !ReferenceEquals(eraLibrary, strictLibrary))
             {
                 // Too few commercials from the episode's years: widen to any year the slot's categories allow.
@@ -248,6 +277,7 @@ public sealed class ChannelBuilder
                 SlotEnd = slotEndOverride,
                 MaxRepeatsPerBreak = _channel.Ads.MaxRepeatsPerBreak,
                 Random = _random,
+                PreferredAds = preferredAds,
                 Bumpers = bumperSet,
                 Filler = gapFiller,
             };
@@ -416,13 +446,13 @@ public sealed class ChannelBuilder
     private DateTimeOffset EmitStationBreak(
         List<PlayoutItem> items, List<GuideProgramme> programmes, List<PlayRecord> plays, List<string> warnings,
         DateTimeOffset start, long durationMs, List<CatalogEntry> gapLibrary, BumperSet bumpers, FillerClip? filler,
-        Dictionary<long, DateTimeOffset> recentPlays, TimeSpan cooldown, ref int idCounter, string nextShow)
+        Dictionary<long, DateTimeOffset> recentPlays, TimeSpan cooldown, ref int idCounter, string nextShow, IReadOnlySet<string>? preferred = null)
     {
         var clips = gapLibrary
             .Where(e => !OnCooldown(e.Item.Id, start, cooldown, recentPlays))
             .Select(e => new FillerClip(e.Item.Path, e.Item.DurationMs))
             .ToList();
-        (var gapItems, var gapWarnings) = SpikeBuilder.FillGap(start, durationMs, clips, bumpers, filler, _channel.Ads.MaxRepeatsPerBreak, _random);
+        (var gapItems, var gapWarnings) = SpikeBuilder.FillGap(start, durationMs, clips, bumpers, filler, _channel.Ads.MaxRepeatsPerBreak, _random, preferred);
         warnings.AddRange(gapWarnings.Select(w => $"{start:ddd HH:mm} station break: {w}"));
 
         foreach (PlayoutItem item in gapItems)
@@ -529,6 +559,22 @@ public sealed class ChannelBuilder
             ? At(date, slots[index + 1].StartTime)
             : FirstSlotStart(date.AddDays(1));
         return (slots[index], nextStart, plan);
+    }
+
+    /// <summary>
+    /// The holiday whose commercials this slot favours at this moment, and how. A slot set to follow the calendar takes
+    /// the holiday of the rule that chose the day's plan, and favours nothing on an ordinary day.
+    /// </summary>
+    private (HolidayAdsMode Mode, string? Key) HolidayAdsFor(SlotConfig slot, DateTimeOffset at)
+    {
+        if (slot.Ads is null || slot.Ads.HolidayAdsMode == HolidayAdsMode.None || slot.Ads.Holiday is null) return (HolidayAdsMode.None, null);
+        string? key = slot.Ads.Holiday;
+        if (key == SlotAdsConfig.CalendarHoliday)
+        {
+            CalendarRule? rule = PlanCalendar.RuleFor(_channel, DateOnly.FromDateTime(InZone(at).DateTime));
+            key = rule?.Kind == RuleKind.Holiday ? rule.Holiday : null;
+        }
+        return key is null ? (HolidayAdsMode.None, null) : (slot.Ads.HolidayAdsMode, HolidayTagger.Fold(key));
     }
 
     /// <summary>When the given date's plan takes over: its first slot that day.</summary>

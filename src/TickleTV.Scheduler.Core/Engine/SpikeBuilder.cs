@@ -37,6 +37,8 @@ public sealed record SpikeRequest
     public int MaxRepeatsPerBreak { get; init; } = 2;
     /// <summary>Breaks with more candidate clips than they can weigh draw a random subset with this; null uses the shared source.</summary>
     public Random? Random { get; init; }
+    /// <summary>Paths of ads to favour in every break (a holiday's commercials in its week). Null means no favourites.</summary>
+    public IReadOnlySet<string>? PreferredAds { get; init; }
     public BumperSet Bumpers { get; init; } = new();
     /// <summary>
     /// A clip that covers whatever ads and bumpers cannot: the leftover plays from its start, looping if the gap
@@ -91,7 +93,7 @@ public static class SpikeBuilder
         var items = new List<PlayoutItem>();
         var cursor = req.Start;
         int breakIndex = 0;
-        var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak), Random = req.Random };
+        var filler = new BreakFiller(req.Ads) { MaxRepeatsPerBreak = Math.Max(1, req.MaxRepeatsPerBreak), Random = req.Random, Preferred = req.PreferredAds };
         var bumpers = new BumperRotation(req.Bumpers);
         var gaps = new GapFiller(req.Filler);
         bool edgeBumpers = req.Bumpers.Placement == BumperPlacement.ShowEdges;
@@ -313,12 +315,12 @@ public static class SpikeBuilder
     /// Returns the items placed from <paramref name="start"/> for exactly <paramref name="durationMs"/>.
     /// </summary>
     public static (IReadOnlyList<PlayoutItem> Items, IReadOnlyList<string> Warnings) FillGap(
-        DateTimeOffset start, long durationMs, IReadOnlyList<FillerClip> clips, BumperSet bumpers, FillerClip? filler, int maxRepeatsPerBreak = 1, Random? random = null)
+        DateTimeOffset start, long durationMs, IReadOnlyList<FillerClip> clips, BumperSet bumpers, FillerClip? filler, int maxRepeatsPerBreak = 1, Random? random = null, IReadOnlySet<string>? preferred = null)
     {
         var items = new List<PlayoutItem>();
         var warnings = new List<string>();
         if (durationMs <= 0) return (items, warnings);
-        var breakFiller = new BreakFiller(clips) { MaxRepeatsPerBreak = Math.Max(1, maxRepeatsPerBreak), Random = random };
+        var breakFiller = new BreakFiller(clips) { MaxRepeatsPerBreak = Math.Max(1, maxRepeatsPerBreak), Random = random, Preferred = preferred };
         var rotation = new BumperRotation(bumpers);
         var gaps = new GapFiller(filler);
         DateTimeOffset end = EmitBreak(items, start, durationMs, breakFiller, rotation, gaps, warnings);
