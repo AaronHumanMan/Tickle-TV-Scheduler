@@ -23,6 +23,8 @@ public sealed record BuildOptions
     public int? Seed { get; init; }
     /// <summary>Ignore the episodes the existing window already assigned.</summary>
     public bool Fresh { get; init; }
+    /// <summary>The zone the schedule's clock times are read in. Null means this computer's zone.</summary>
+    public TimeZoneInfo? TimeZone { get; init; }
 }
 
 public sealed record ChannelBuildReport
@@ -93,7 +95,7 @@ public static class BuildRunner
             BuildResult result;
             try
             {
-                var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, log, options.Seed) { PriorAssignments = prior };
+                var builder = new ChannelBuilder(db, picker, ch, cfg.Next.SchemaVersion, log, options.Seed) { PriorAssignments = prior, TimeZone = options.TimeZone ?? TimeZoneInfo.Local };
                 result = builder.Build(cut, until);
             }
             catch (Exception ex)

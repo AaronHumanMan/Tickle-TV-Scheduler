@@ -57,6 +57,26 @@ public sealed class ChannelBuilder
     /// </summary>
     public IReadOnlyDictionary<string, Queue<long>> PriorAssignments { get; init; } = new Dictionary<string, Queue<long>>();
 
+    /// <summary>
+    /// The time zone the schedule's clock times are read in. Slot times, padding boundaries and the calendar all
+    /// follow this zone's wall clock, so a build that crosses a daylight-saving change keeps 8pm at 8pm. Null means a
+    /// fixed offset taken from the build's start, which never changes mid-build (fine for tests, wrong for a real zone).
+    /// </summary>
+    public TimeZoneInfo? TimeZone { get; init; }
+
+    private TimeZoneInfo _zone = TimeZoneInfo.Utc;
+
+    /// <summary>The same instant, with the offset the zone uses at that instant.</summary>
+    private DateTimeOffset InZone(DateTimeOffset t) => TimeZoneInfo.ConvertTime(t, _zone);
+
+    /// <summary>A clock time on a date, with the offset the zone uses then. A time the clocks skip takes the offset before the change.</summary>
+    private DateTimeOffset At(DateOnly date, TimeOnly time)
+    {
+        var local = new DateTime(date, time, DateTimeKind.Unspecified);
+        TimeSpan offset = _zone.IsInvalidTime(local) ? _zone.GetUtcOffset(local.AddHours(-1)) : _zone.GetUtcOffset(local);
+        return new DateTimeOffset(local, offset);
+    }
+
     /// <summary>Parses the show out of a slot play's context, "slot HH:mm Show Name".</summary>
     public static string? ShowFromSlotContext(string context)
     {
@@ -67,6 +87,8 @@ public sealed class ChannelBuilder
 
     public BuildResult Build(DateTimeOffset from, DateTimeOffset until)
     {
+        _zone = TimeZone ?? TimeZoneInfo.CreateCustomTimeZone($"fixed{from.Offset:hhmm}", from.Offset, "Fixed offset", "Fixed offset");
+        from = InZone(from);
         var items = new List<PlayoutItem>();
         var programmes = new List<GuideProgramme>();
         var plays = new List<PlayRecord>();
@@ -109,6 +131,8 @@ public sealed class ChannelBuilder
 
         while (cursor < until)
         {
+            // Re-read the offset each time round: the clocks may have changed since the last programme.
+            cursor = InZone(cursor);
             (SlotConfig slot, DateTimeOffset nextSlotStart, DayPlan plan) = ActiveSlot(cursor);
             if (manyPlans && !ReferenceEquals(plan, currentPlan))
             {
@@ -485,10 +509,11 @@ public sealed class ChannelBuilder
     /// </summary>
     private (SlotConfig Slot, DateTimeOffset NextStart, DayPlan Plan) ActiveSlot(DateTimeOffset cursor)
     {
+        cursor = InZone(cursor);
         DateOnly date = DateOnly.FromDateTime(cursor.DateTime);
         DayPlan plan = PlanCalendar.PlanFor(_channel, date);
         List<SlotConfig> slots = Sorted(plan);
-        if (cursor < At(date, slots[0].StartTime, cursor.Offset))
+        if (cursor < At(date, slots[0].StartTime))
         {
             date = date.AddDays(-1);
             plan = PlanCalendar.PlanFor(_channel, date);
@@ -497,19 +522,17 @@ public sealed class ChannelBuilder
 
         int index = slots.Count - 1;
         for (int i = 0; i < slots.Count; i++)
-            if (At(date, slots[i].StartTime, cursor.Offset) <= cursor) index = i;
+            if (At(date, slots[i].StartTime) <= cursor) index = i;
 
         DateTimeOffset nextStart = index + 1 < slots.Count
-            ? At(date, slots[index + 1].StartTime, cursor.Offset)
-            : FirstSlotStart(date.AddDays(1), cursor.Offset);
+            ? At(date, slots[index + 1].StartTime)
+            : FirstSlotStart(date.AddDays(1));
         return (slots[index], nextStart, plan);
     }
 
     /// <summary>When the given date's plan takes over: its first slot that day.</summary>
-    private DateTimeOffset FirstSlotStart(DateOnly date, TimeSpan offset) =>
-        At(date, Sorted(PlanCalendar.PlanFor(_channel, date))[0].StartTime, offset);
-
-    private static DateTimeOffset At(DateOnly date, TimeOnly time, TimeSpan offset) => new(date, time, offset);
+    private DateTimeOffset FirstSlotStart(DateOnly date) =>
+        At(date, Sorted(PlanCalendar.PlanFor(_channel, date))[0].StartTime);
 
     private List<SlotConfig> Sorted(DayPlan plan)
     {
