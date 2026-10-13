@@ -489,9 +489,11 @@ public sealed class CatalogDb : IDisposable
 
     /// <summary>
     /// How many commercials pass a slot's category rules: in one of <paramref name="only"/> (empty means any) and in
-    /// none of <paramref name="never"/>. The slug <c>none</c> stands for commercials with no category yet.
+    /// none of <paramref name="never"/>. The slug <c>none</c> stands for commercials with no category yet. With
+    /// <paramref name="decades"/> ("1980s", "1990s"), only commercials from those decades count: by year when known,
+    /// else by decade tag. <paramref name="datedOnly"/> counts only commercials that have a year or a decade tag at all.
     /// </summary>
-    public int CountCommercials(IReadOnlyList<string> only, IReadOnlyList<string> never)
+    public int CountCommercials(IReadOnlyList<string> only, IReadOnlyList<string> never, IReadOnlyList<string>? decades = null, bool datedOnly = false)
     {
         var args = new List<(string, object?)>();
         string InAny(IReadOnlyList<string> slugs, string prefix)
@@ -509,8 +511,44 @@ public sealed class CatalogDb : IDisposable
         var where = new List<string> { "m.kind = 'Commercial'", "m.missing_utc IS NULL" };
         if (only.Count > 0) where.Add(InAny(only, "o"));
         if (never.Count > 0) where.Add("NOT " + InAny(never, "n"));
+        if (datedOnly) where.Add($"(m.year IS NOT NULL OR EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag GLOB '{DecadeGlob}'))");
+        if (decades is { Count: > 0 })
+        {
+            var starts = decades.Select(Engine.AdRules.DecadeStart).OfType<int>().Distinct().ToList();
+            if (starts.Count == 0) return 0;
+            string byYear = string.Join(" OR ", starts.Select(d => $"m.year BETWEEN {d} AND {d + 9}"));
+            var tags = starts.Select((d, i) => (name: $"@d{i}", tag: $"{d}s")).ToList();
+            foreach (var (name, tag) in tags) args.Add((name, tag));
+            where.Add($"((m.year IS NOT NULL AND ({byYear})) OR (m.year IS NULL AND EXISTS (SELECT 1 FROM tags t WHERE t.item_id = m.id AND t.tag IN ({string.Join(",", tags.Select(t => t.name))}))))");
+        }
         return (int)Scalar<long>($"SELECT COUNT(*) FROM media_items m WHERE {string.Join(" AND ", where)}", args.ToArray());
     }
+
+    /// <summary>Matches a decade tag such as "1990s" and nothing else.</summary>
+    private const string DecadeGlob = "[0-9][0-9][0-9][0-9]s";
+
+    public sealed record Decade(string Tag, int Items);
+
+    /// <summary>Every decade the commercials come from, with counts: a clip's year decides when known, else its decade tag.</summary>
+    public IReadOnlyList<Decade> ListDecades() =>
+        Query($"""
+            SELECT decade, COUNT(*) FROM (
+                SELECT COALESCE(CAST(m.year / 10 * 10 AS TEXT) || 's',
+                                (SELECT t.tag FROM tags t WHERE t.item_id = m.id AND t.tag GLOB '{DecadeGlob}' ORDER BY t.tag LIMIT 1)) AS decade
+                FROM media_items m WHERE m.kind = 'Commercial' AND m.missing_utc IS NULL
+            ) WHERE decade IS NOT NULL GROUP BY decade ORDER BY decade
+            """, r => new Decade(r.GetString(0), r.GetInt32(1)));
+
+    public sealed record ShowYears(int? First, int? Last, int Dated, int Episodes);
+
+    /// <summary>When a show's episodes were made: the first and last year (air date, else the file's year), how many episodes have one, and how many episodes there are.</summary>
+    public ShowYears YearsOfShow(string show) =>
+        Query("""
+            SELECT MIN(y), MAX(y), COUNT(y), COUNT(*) FROM (
+                SELECT COALESCE(CASE WHEN e.air_date IS NOT NULL THEN CAST(substr(e.air_date, 1, 4) AS INTEGER) END, m.year) AS y
+                FROM episodes e JOIN media_items m ON m.id = e.item_id
+                WHERE e.show = @show COLLATE NOCASE AND m.missing_utc IS NULL)
+            """, r => new ShowYears(r.IsDBNull(0) ? null : r.GetInt32(0), r.IsDBNull(1) ? null : r.GetInt32(1), r.GetInt32(2), r.GetInt32(3)), ("@show", show)).First();
 
     /// <summary>A derived category keeps only its slug, so show it as words: "health-beauty-personal-care" becomes "Health Beauty Personal Care".</summary>
     private static string PrettyName(string nameOrSlug)

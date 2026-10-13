@@ -118,7 +118,7 @@ public class SlotAdPoolTests : IDisposable
 
         var ads = AdPaths(r).ToList();
         Assert.Contains(ads, p => p.Contains("/ads/beer"));
-        Assert.Contains(r.Warnings, w => w.Contains("only 1 commercials match its categories", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(r.Warnings, w => w.Contains("only 1 commercials match its rules", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(r.Warnings, w => w.Contains("any commercial may air", StringComparison.OrdinalIgnoreCase));
     }
 

@@ -148,17 +148,39 @@ public sealed class ChannelBuilder
                 continue;
             }
 
-            // Ad candidates: allowed by the slot's category rules, in the pool, era-matched if the pool asks, and outside the cooldown window.
-            var ctx = new QueryContext(episode.Episode?.AirDate?.Year ?? episode.Item.Year);
+            // Ad candidates: allowed by the slot's category and decade rules, from around the episode's year if the slot
+            // asks, in the pool (era-matched if the pool asks), and outside the cooldown window.
+            int? episodeYear = episode.Episode?.AirDate?.Year ?? episode.Item.Year;
+            var ctx = new QueryContext(episodeYear);
             (List<CatalogEntry> strictLibrary, List<CatalogEntry> looseLibrary) = SlotLibrary(slot, channelLibrary, slotLibraries, warnings);
-            List<FillerClip> ads = Candidates(pool, strictLibrary, ctx, cursor, cooldown, recentPlays);
+            List<CatalogEntry> eraLibrary = strictLibrary;
+            if (slot.Ads is { EraMode: EraMode.Show } eraRule)
+            {
+                if (episodeYear is null)
+                {
+                    string note = $"{slot.Time} slot ({slot.Label}): {show} episodes have no year or air date, so \"commercials from around when the episode aired\" can't apply to them; commercials from any year air.";
+                    if (!warnings.Contains(note)) warnings.Add(note);
+                }
+                else eraLibrary = strictLibrary.Where(e => AdRules.InShowEra(e, eraRule, episodeYear)).ToList();
+            }
+            List<FillerClip> ads = Candidates(pool, eraLibrary, ctx, cursor, cooldown, recentPlays);
+            if (ads.Count < AdRules.FallbackBelow && !ReferenceEquals(eraLibrary, strictLibrary))
+            {
+                // Too few commercials from the episode's years: widen to any year the slot's categories allow.
+                List<FillerClip> fallback = Candidates(pool, strictLibrary, ctx, cursor, cooldown, recentPlays);
+                if (fallback.Count > ads.Count)
+                {
+                    warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} commercials from around {episodeYear} were free, so commercials from any year may air in its breaks.");
+                    ads = fallback;
+                }
+            }
             if (ads.Count < AdRules.FallbackBelow && !ReferenceEquals(strictLibrary, looseLibrary))
             {
-                // The slot's categories have run short: let any commercial in (the never-lists still hold) so the show still ends on time.
+                // The slot's categories or decades have run short: let any commercial in (the never-lists still hold) so the show still ends on time.
                 List<FillerClip> fallback = Candidates(pool, looseLibrary, ctx, cursor, cooldown, recentPlays);
                 if (fallback.Count > ads.Count)
                 {
-                    warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} commercials from the slot's categories were free, so any commercial may air in its breaks.");
+                    warnings.Add($"{cursor:ddd HH:mm} {show}: only {ads.Count} commercials that fit the slot's rules were free, so any commercial may air in its breaks.");
                     ads = fallback;
                 }
             }
@@ -341,7 +363,7 @@ public sealed class ChannelBuilder
         return _db.FindById(match.Value.Peek())?.DurationMs;
     }
 
-    /// <summary>The commercials a slot may use: strict (its only-list and never-lists) and loose (never-lists only, for the fallback). Warns once when the strict set is small.</summary>
+    /// <summary>The commercials a slot may use: strict (its only-list, decades and never-lists) and loose (never-lists only, for the fallback). Warns once when the strict set is small. The show-era rule is applied per episode by the caller.</summary>
     private (List<CatalogEntry> Strict, List<CatalogEntry> Loose) SlotLibrary(
         SlotConfig slot, List<CatalogEntry> channelLibrary, Dictionary<SlotConfig, (List<CatalogEntry>, List<CatalogEntry>)> cache, List<string> warnings)
     {
@@ -352,9 +374,10 @@ public sealed class ChannelBuilder
             return cache[slot];
         }
         List<CatalogEntry> strict = channelLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads)).ToList();
-        List<CatalogEntry> loose = slot.Ads.Only.Count == 0 ? strict : channelLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads, strict: false)).ToList();
-        if (slot.Ads.Only.Count > 0 && strict.Count < AdRules.SmallPool)
-            warnings.Add($"{slot.Time} slot ({slot.Label}): only {strict.Count} commercials match its categories ({AdRules.Describe(slot.Ads)}). They will repeat a lot, and breaks fall back to any commercial when they run out.");
+        bool narrows = slot.Ads.Only.Count > 0 || slot.Ads.EraMode == EraMode.Decades;
+        List<CatalogEntry> loose = narrows ? channelLibrary.Where(e => AdRules.Allowed(e, _channel.Ads, slot.Ads, strict: false)).ToList() : strict;
+        if (narrows && strict.Count < AdRules.SmallPool)
+            warnings.Add($"{slot.Time} slot ({slot.Label}): only {strict.Count} commercials match its rules ({AdRules.Describe(slot.Ads)}). They will repeat a lot, and breaks fall back to any commercial when they run out.");
         cache[slot] = (strict, loose);
         return cache[slot];
     }

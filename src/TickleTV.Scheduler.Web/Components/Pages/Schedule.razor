@@ -248,6 +248,29 @@ else
                                 </div>
                                 @if (AdCountWords(slot) is { } ac) { <p class="block-note">@ac</p> }
                             }
+                            <label class="turns">Commercial years:
+                                <select value="@EraModeOf(slot)" @onchange="e => SetEraMode(slot, e.Value?.ToString())">
+                                    <option value="any">Any year</option>
+                                    <option value="show">From around when the episode aired</option>
+                                    <option value="decades">Only these decades</option>
+                                </select>
+                            </label>
+                            @if (EraModeOf(slot) == "show")
+                            {
+                                <label class="turns">Within <input type="number" min="0" max="50" class="short" value="@slot.Ads!.EraSpan" @onchange="e => SetEraSpan(slot, e.Value?.ToString())" /> years of the episode's year</label>
+                                @if (EraCountWords(slot) is { } ew) { <p class="block-note">@ew</p> }
+                            }
+                            else if (EraModeOf(slot) == "decades")
+                            {
+                                <div class="cat-list">
+                                    @foreach (var d in decades)
+                                    {
+                                        <label class="check"><input type="checkbox" checked="@slot.Ads!.Decades.Contains(d.Tag)" @onchange="() => ToggleDecade(slot, d.Tag)" /> @d.Tag <span class="muted">(@d.Items)</span></label>
+                                    }
+                                    @if (decades.Count == 0) { <p class="muted">No commercial has a year or a decade yet. A folder named <em>80s</em> or <em>90s</em>, or a year in the file name, gives them one when you scan.</p> }
+                                </div>
+                                @if (EraCountWords(slot) is { } ew) { <p class="block-note">@ew</p> }
+                            }
                             @if (BlockAdvisor.Advice(ch, slot, AverageOf) is { } advice) { <p class="block-note">@advice</p> }
                         </td>
                         <td>
@@ -352,6 +375,7 @@ else
             holidayCounts = summaries.ToDictionary(s => s.Show, s => s.Holidays, StringComparer.OrdinalIgnoreCase);
             categories = Catalog.Run(db => db.ListCategories());
             noCategory = Catalog.Run(db => db.CountCommercials([AdRules.NoCategory], []));
+            decades = Catalog.Run(db => db.ListDecades());
         }
     }
 
@@ -366,18 +390,25 @@ else
     private string AdMode(SlotConfig slot)
     {
         if (adModes.TryGetValue(slot, out string? mode)) return mode;
-        if (slot.Ads is null || slot.Ads.IsEmpty) return "any";
-        return slot.Ads.Only.Count > 0 ? "only" : "never";
+        if (slot.Ads is null) return "any";
+        return slot.Ads.Only.Count > 0 ? "only" : slot.Ads.Never.Count > 0 ? "never" : "any";
     }
 
     private void SetAdMode(SlotConfig slot, string? mode)
     {
         mode = mode is "only" or "never" ? mode : "any";
         adModes[slot] = mode;
-        if (mode == "any") { slot.Ads = null; adCounts.Remove(slot); return; }
         slot.Ads ??= new SlotAdsConfig();
-        if (mode == "only") slot.Ads.Never.Clear(); else slot.Ads.Only.Clear();
+        if (mode != "only") slot.Ads.Only.Clear();
+        if (mode != "never") slot.Ads.Never.Clear();
+        TidyAds(slot);
         RecountAds(slot);
+    }
+
+    /// <summary>Drops the rule object once nothing is set, so the saved file stays as it was.</summary>
+    private void TidyAds(SlotConfig slot)
+    {
+        if (slot.Ads is { IsEmpty: true } && AdMode(slot) == "any") slot.Ads = null;
     }
 
     private void ToggleCategory(SlotConfig slot, List<string> picked, string slug)
@@ -394,7 +425,86 @@ else
     private void RecountAds(SlotConfig slot)
     {
         if (slot.Ads is null || !Catalog.CatalogExists) { adCounts.Remove(slot); return; }
-        adCounts[slot] = Catalog.Run(db => db.CountCommercials(slot.Ads.Only, slot.Ads.Never));
+        adCounts[slot] = Catalog.Run(db => db.CountCommercials(slot.Ads.Only, slot.Ads.Never, slot.Ads.EraMode == EraMode.Decades ? slot.Ads.Decades : null));
+    }
+
+    // ----- Commercial years per slot
+
+    private IReadOnlyList<CatalogDb.Decade> decades = [];
+    private readonly Dictionary<string, CatalogDb.ShowYears> showYears = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string EraModeOf(SlotConfig slot) => slot.Ads?.EraMode switch
+    {
+        EraMode.Show => "show",
+        EraMode.Decades => "decades",
+        _ => "any",
+    };
+
+    private void SetEraMode(SlotConfig slot, string? mode)
+    {
+        slot.Ads ??= new SlotAdsConfig();
+        slot.Ads.Era = mode is "show" or "decades" ? mode : null;
+        if (mode != "decades") slot.Ads.Decades.Clear();
+        if (mode != "show") slot.Ads.EraWithin = null;
+        TidyAds(slot);
+        RecountAds(slot);
+    }
+
+    private static void SetEraSpan(SlotConfig slot, string? text)
+    {
+        if (slot.Ads is null) return;
+        slot.Ads.EraWithin = int.TryParse(text, out int n) ? Math.Clamp(n, 0, 50) : null;
+    }
+
+    private void ToggleDecade(SlotConfig slot, string tag)
+    {
+        if (slot.Ads is null) return;
+        if (!slot.Ads.Decades.Remove(tag)) slot.Ads.Decades.Add(tag);
+        RecountAds(slot);
+    }
+
+    private CatalogDb.ShowYears? ShowYearsOf(string show)
+    {
+        if (!Catalog.CatalogExists || string.IsNullOrWhiteSpace(show)) return null;
+        if (!showYears.TryGetValue(show, out var years))
+            showYears[show] = years = Catalog.Run(db => db.YearsOfShow(show));
+        return years;
+    }
+
+    /// <summary>What the slot's year rule means for its shows and commercials, in plain words.</summary>
+    private string? EraCountWords(SlotConfig slot)
+    {
+        if (slot.Ads is null || !Catalog.CatalogExists) return null;
+        string fit = AdMode(slot) == "any" ? "" : " and fit the categories above";
+        if (slot.Ads.EraMode == EraMode.Decades)
+        {
+            if (slot.Ads.Decades.Count == 0) return "Tick at least one decade, or this slot will use commercials from any year.";
+            if (!adCounts.TryGetValue(slot, out int n)) { RecountAds(slot); n = adCounts.GetValueOrDefault(slot); }
+            string from = "the " + string.Join(", ", slot.Ads.Decades);
+            if (n < AdRules.SmallPool) return $"Only {n} commercial{(n == 1 ? "" : "s")} come from {from}{fit}. {(n == 0 ? "The breaks will use any commercial instead." : "They will repeat a lot, and breaks fall back to any commercial when they run out.")}";
+            return $"{n:N0} commercials come from {from}{fit}.";
+        }
+        if (slot.Ads.EraMode == EraMode.Show)
+        {
+            var parts = new List<string>();
+            foreach (string show in slot.ShowList.Where(s => !string.IsNullOrWhiteSpace(s)))
+            {
+                if (ShowYearsOf(show) is not { } y) continue;
+                if (y.Dated == 0) parts.Add($"{show} episodes have no year or air date, so they take commercials from any year.");
+                else
+                {
+                    string span = y.First == y.Last ? $"{y.First}" : $"{y.First} to {y.Last}";
+                    string undated = y.Dated < y.Episodes ? $" ({y.Episodes - y.Dated} without a date take any year)" : "";
+                    parts.Add($"{show} episodes are from {span}{undated}.");
+                }
+            }
+            int dated = Catalog.Run(db => db.CountCommercials(slot.Ads.Only, slot.Ads.Never, null, datedOnly: true));
+            parts.Add(dated == 0
+                ? "No commercial has a year or a decade yet, so breaks will use any commercial. A folder named 80s or 90s, or a year in the file name, gives them one when you scan."
+                : $"{dated:N0} commercials have a year or decade to match on{fit}; the rest only air when the matched ones run out.");
+            return string.Join(" ", parts);
+        }
+        return null;
     }
 
     private string? AdCountWords(SlotConfig slot)
@@ -491,8 +601,12 @@ else
                 if (s.Shows.Count(n => !string.IsNullOrWhiteSpace(n)) != s.Shows.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase).Count())
                     problems.Add($"Channel {ch.Number}: the {s.Time} slot lists the same show twice.");
                 if (!TimeOnly.TryParse(s.Time, out _)) problems.Add($"Channel {ch.Number}: \"{s.Time}\" isn't a valid time.");
-                if (AdMode(s) != "any" && (s.Ads is null || s.Ads.IsEmpty))
-                    problems.Add($"Channel {ch.Number}: the {s.Time} slot says \"{(AdMode(s) == "only" ? "only these categories" : "any except these categories")}\" but no category is ticked. Tick one, or choose Any category.");
+                if (AdMode(s) == "only" && (s.Ads is null || s.Ads.Only.Count == 0))
+                    problems.Add($"Channel {ch.Number}: the {s.Time} slot says \"only these categories\" but no category is ticked. Tick one, or choose Any category.");
+                if (AdMode(s) == "never" && (s.Ads is null || s.Ads.Never.Count == 0))
+                    problems.Add($"Channel {ch.Number}: the {s.Time} slot says \"any except these categories\" but no category is ticked. Tick one, or choose Any category.");
+                if (s.Ads is { EraMode: EraMode.Decades, Decades.Count: 0 })
+                    problems.Add($"Channel {ch.Number}: the {s.Time} slot says \"only these decades\" but no decade is ticked. Tick one, or choose Any year.");
             }
             foreach (string t in plan.Slots.GroupBy(s => s.Time).Where(g => g.Count() > 1).Select(g => g.Key))
                 problems.Add($"{where}: two slots start at {t}. Give them different times.");
